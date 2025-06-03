@@ -8,7 +8,7 @@ With Breakpoint you can:
 - select these SWE problems based on principled static difficulty properties like code complexity and centrality
 - evaluate SWE agents on large datasets of these SWE problems whose difficulty smoothly scales beyond human level
 
-Breakpoint generates tasks by introducing corruptions in real-world code repositories, and then explicitly testing a model's ability to diagnose, explore and repair the codebase. See the [paper]() for more information and additional motivation.
+Breakpoint generates tasks by introducing corruptions in real-world code repositories, and then explicitly testing a model's ability to diagnose, explore and repair the codebase. See the [paper](https://arxiv.org/pdf/2506.00172) for more information and additional motivation.
 
 ## Getting Started
 
