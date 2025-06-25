@@ -409,17 +409,22 @@ After you've fixed the code, please record your solution and process for compari
 
         # Group problems by repository
         problems_by_repo = {}
+        repos = {}
         for problem in self.problems:
             repo_path = os.path.join(problem.repo.path, problem.repo.code_path)
             if repo_path not in problems_by_repo:
                 problems_by_repo[repo_path] = []
             problems_by_repo[repo_path].append(problem)
+            repos[repo_path] = problem.repo
 
         # For each repository, build function graph and group related problems
         grouped_problems = []
 
         for repo_path, repo_problems in problems_by_repo.items():
-            # Build function graph for this repository
+            
+            if not os.path.exists(repo_path):
+              repo_path = os.path.join(prepare_directory(repos[repo_path]), repos[repo_path].code_path)
+            
             try:
                 function_graph, _ = build_function_graph(repo_path)
 
@@ -540,10 +545,14 @@ After you've fixed the code, please record your solution and process for compari
 
         async with self.semaphore:
             base_problem = problem_group[0]
-            worker_dir = self.prepare_env_for_problem(base_problem, mode)
+            try:
+              worker_dir = self.prepare_env_for_problem(base_problem, mode)
 
-            for problem in problem_group[1:]:
-                self._apply_additional_corruption(worker_dir, problem)
+              for problem in problem_group[1:]:
+                  self._apply_additional_corruption(worker_dir, problem)
+            
+            except Exception as e:
+              print(f"Error preparing environment for {base_problem.function_name}: {e}")
 
             base_problem.test_info = await run_tests(
                 worker_dir,
@@ -583,7 +592,7 @@ After you've fixed the code, please record your solution and process for compari
             submit_calls = [
                 (x["args"]["file_path"], x["args"]["func_name"])
                 for x in attempt.metadata["tool_usage"]
-                if x["tool"] == "replace_function"
+                if x["tool"] == "replace_function" and "file_path" in x["args"] and "func_name" in x["args"]
             ]
 
             right_function = True

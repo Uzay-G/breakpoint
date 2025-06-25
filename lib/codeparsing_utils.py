@@ -262,7 +262,6 @@ def build_function_graph(
                 if file.endswith(".py"):
                     python_files.append(os.path.join(root, file))
 
-        print(repo_dir, python_files)
         code2flow.code2flow(python_files, temp_path)
 
         # Load code2flow output
