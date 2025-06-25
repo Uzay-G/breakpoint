@@ -19,6 +19,7 @@ class Repo(BaseModel):
     name: Optional[str] = ""
     test_command: Optional[str] = "source venv/bin/activate && ./venv/bin/pytest"
     url: Optional[str] = ""
+    commit: Optional[str] = None
     stats: Optional[Dict] = None
 
 
@@ -463,6 +464,7 @@ def load_problems_from_json(json_file_path):
             test_command=problem["repo"].get(
                 "test_command", "source venv/bin/activate && ./venv/bin/pytest"
             ),
+            commit=problem["repo"].get("commit", None),
             stats=problem["repo"].get("stats", {}),
         )
         problem = Problem(
@@ -674,6 +676,20 @@ if __name__ == "__main__":
             print(args.repo_path, args.code_path)
             repo = Repo(path=args.repo_path, code_path=args.code_path)
             repo.url = get_origin_url(args.repo_path)
+            
+            # Get the current commit hash
+            try:
+                commit_result = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=args.repo_path,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                repo.commit = commit_result.stdout.strip()
+                logging.info(f"Got commit hash: {repo.commit}")
+            except subprocess.CalledProcessError as e:
+                logging.warning(f"Failed to get commit hash: {e}")
             crg = CodebaseCache(repo=repo, num_workers=args.num_workers)
             logging.info("Created a new CodebaseCache instance.")
 
@@ -806,6 +822,20 @@ if __name__ == "__main__":
                 )
 
                 repo_info.url = get_origin_url(repo_path)
+                
+                # Get the current commit hash
+                try:
+                    commit_result = subprocess.run(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    repo_info.commit = commit_result.stdout.strip()
+                    logging.info(f"Got commit hash: {repo_info.commit}")
+                except subprocess.CalledProcessError as e:
+                    logging.warning(f"Failed to get commit hash for {repo_name}: {e}")
                 repo_code_info = get_repo_info(os.path.join(repo_path, code_path))
 
                 print(repo_code_info)

@@ -753,7 +753,7 @@ def setup_repo_env(repo_dir):
         pass
 
     try:
-        subprocess.run(["pip", "install", "pytest"], check=True, env=venv_env)
+        subprocess.run(["pip", "install", "pytest", "pytest-reportlog"], check=True, env=venv_env)
     except subprocess.CalledProcessError as e:
         print(f"Error installing pytest for {e}")
         return False
@@ -779,13 +779,14 @@ def prepare_directory(repo):
     else:
         # Determine the repository directory name.
         # Use the basename of repo.path (if provided) or derive it from repo.url.
-        repo_dir_name = os.path.basename(repo.path.rstrip(os.sep))
+        repo_dir_name = repo.name
 
         tmp_repos_dir = os.path.expanduser("/tmp/repos")
         candidate_path = os.path.join(tmp_repos_dir, repo_dir_name)
 
         if os.path.exists(candidate_path):
             original_path = candidate_path
+
         elif hasattr(repo, "url") and repo.url:
             # Ensure the parent directory exists
             os.makedirs(tmp_repos_dir, exist_ok=True)
@@ -798,6 +799,22 @@ def prepare_directory(repo):
             if clone_result.returncode != 0:
                 error_msg = clone_result.stderr.decode("utf-8")
                 raise Exception("Failed to clone repository: " + error_msg)
+            
+            # If a specific commit is provided, check it out
+            if hasattr(repo, "commit") and repo.commit:
+                checkout_command = ["git", "checkout", repo.commit]
+                checkout_result = subprocess.run(
+                    checkout_command, 
+                    cwd=candidate_path,
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE
+                )
+                if checkout_result.returncode != 0:
+                    error_msg = checkout_result.stderr.decode("utf-8")
+                    logging.warning(f"Failed to checkout commit {repo.commit}: {error_msg}")
+                else:
+                    logging.info(f"Successfully checked out commit {repo.commit}")
+            
             setup_repo_env(candidate_path)
             original_path = candidate_path
         else:
