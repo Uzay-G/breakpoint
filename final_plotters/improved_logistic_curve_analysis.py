@@ -6,21 +6,16 @@ with bootstrap-based prediction intervals that correctly represent prediction un
 """
 
 import json
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
-from scipy import stats
-import scienceplots
-from pathlib import Path
-import os
 import logging
 import warnings
-from statsmodels.tools.sm_exceptions import ConvergenceWarning
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
 from numpy.linalg import LinAlgError
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -57,12 +52,12 @@ try:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 except:
@@ -72,12 +67,12 @@ except:
             "figure.facecolor": "white",
             "axes.facecolor": "white",
             "savefig.facecolor": "white",
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 
@@ -205,9 +200,9 @@ def bootstrap_prediction_intervals(X, y, n_bootstrap=1000, alpha=0.05):
 
         try:
             # Suppress convergence warnings but catch them
-            with warnings.catch_warnings(record=True) as w:
-                warnings.filterwarnings('error', category=ConvergenceWarning)
-                
+            with warnings.catch_warnings(record=True):
+                warnings.filterwarnings("error", category=ConvergenceWarning)
+
                 # Fit logistic regression model
                 model = sm.Logit(y_boot, X_boot)
                 result = model.fit(disp=0, maxiter=100)
@@ -221,37 +216,45 @@ def bootstrap_prediction_intervals(X, y, n_bootstrap=1000, alpha=0.05):
                 # Predict on grid
                 y_pred = result.predict(X_grid)
                 successful_predictions.append(y_pred)
-                
+
         except ConvergenceWarning as e:
             logger.debug(f"Bootstrap iteration {i}: Convergence warning - {str(e)}")
             failed_iterations += 1
             continue
-            
+
         except LinAlgError as e:
             logger.warning(f"Bootstrap iteration {i}: Linear algebra error - {str(e)}")
             failed_iterations += 1
             continue
-            
+
         except Exception as e:
-            logger.warning(f"Bootstrap iteration {i}: Unexpected error - {type(e).__name__}: {str(e)}")
+            logger.warning(
+                f"Bootstrap iteration {i}: Unexpected error - {type(e).__name__}: {str(e)}"
+            )
             failed_iterations += 1
             continue
 
     # Check if we have enough successful fits
     n_successful = len(successful_predictions)
     if n_successful < n_bootstrap * 0.5:  # Require at least 50% success rate
-        logger.warning(f"Only {n_successful}/{n_bootstrap} bootstrap iterations succeeded. "
-                      f"Results may be unreliable.")
-    
+        logger.warning(
+            f"Only {n_successful}/{n_bootstrap} bootstrap iterations succeeded. "
+            f"Results may be unreliable."
+        )
+
     if n_successful == 0:
-        raise ValueError("All bootstrap iterations failed. Cannot compute prediction intervals.")
-    
+        raise ValueError(
+            "All bootstrap iterations failed. Cannot compute prediction intervals."
+        )
+
     # Convert to array for easier manipulation
     all_predictions = np.array(successful_predictions)
-    
+
     # Log success rate
-    logger.info(f"Bootstrap completed: {n_successful}/{n_bootstrap} iterations successful "
-                f"({n_successful/n_bootstrap*100:.1f}% success rate)")
+    logger.info(
+        f"Bootstrap completed: {n_successful}/{n_bootstrap} iterations successful "
+        f"({n_successful / n_bootstrap * 100:.1f}% success rate)"
+    )
 
     # Calculate mean and intervals
     mean_pred = np.mean(all_predictions, axis=0)
@@ -424,11 +427,11 @@ def plot_logistic_curves_by_model(regression_results, output_path=None):
         upper_bound = complexity_intervals["upper_bound"]
 
         # Get model performance for the legend
-        avg_perf = results["avg_performance"]
+        results["avg_performance"]
 
         # Simplify model names for legend
         model_display = model.replace("claude-3-7-sonnet-latest", "Claude-3.7")
-        
+
         # Plot the curve
         (line,) = ax1.plot(
             x_vals,
@@ -448,7 +451,7 @@ def plot_logistic_curves_by_model(regression_results, output_path=None):
     ax1.grid(True, linestyle="--", alpha=0.7)
     ax1.set_xlim(-3, 3)
     ax1.set_ylim(0, 1)
-    ax1.tick_params(axis='both', labelsize=12)
+    ax1.tick_params(axis="both", labelsize=12)
 
     # Plot harmonic centrality curves
     for model, results in regression_results.items():
@@ -460,11 +463,11 @@ def plot_logistic_curves_by_model(regression_results, output_path=None):
         upper_bound = harmonic_intervals["upper_bound"]
 
         # Get model performance for the legend
-        avg_perf = results["avg_performance"]
+        results["avg_performance"]
 
         # Simplify model names for legend
         model_display = model.replace("claude-3-7-sonnet-latest", "Claude-3.7")
-        
+
         # Plot the curve
         (line,) = ax2.plot(
             x_vals,
@@ -484,7 +487,7 @@ def plot_logistic_curves_by_model(regression_results, output_path=None):
     ax2.grid(True, linestyle="--", alpha=0.7)
     ax2.set_xlim(-3, 3)
     ax2.set_ylim(0, 1)
-    ax2.tick_params(axis='both', labelsize=12)
+    ax2.tick_params(axis="both", labelsize=12)
 
     # Add legends with larger font
     ax1.legend(loc="best", fontsize=12)
@@ -529,8 +532,8 @@ def plot_logistic_curves_by_iteration(
         upper_bound = complexity_intervals["upper_bound"]
 
         # Get performance metrics for the legend
-        avg_perf = results["avg_performance"]
-        n_samples = results["n_samples"]
+        results["avg_performance"]
+        results["n_samples"]
 
         # Plot the curve
         (line,) = ax1.plot(
@@ -551,7 +554,7 @@ def plot_logistic_curves_by_iteration(
     ax1.grid(True, linestyle="--", alpha=0.7)
     ax1.set_xlim(-3, 3)
     ax1.set_ylim(0, 1)
-    ax1.tick_params(axis='both', labelsize=12)
+    ax1.tick_params(axis="both", labelsize=12)
 
     # Plot harmonic centrality curves
     for iter_count in iter_counts:
@@ -565,8 +568,8 @@ def plot_logistic_curves_by_iteration(
         upper_bound = harmonic_intervals["upper_bound"]
 
         # Get performance metrics for the legend
-        avg_perf = results["avg_performance"]
-        n_samples = results["n_samples"]
+        results["avg_performance"]
+        results["n_samples"]
 
         # Plot the curve
         (line,) = ax2.plot(
@@ -587,7 +590,7 @@ def plot_logistic_curves_by_iteration(
     ax2.grid(True, linestyle="--", alpha=0.7)
     ax2.set_xlim(-3, 3)
     ax2.set_ylim(0, 1)
-    ax2.tick_params(axis='both', labelsize=12)
+    ax2.tick_params(axis="both", labelsize=12)
 
     # Add legends with larger font
     ax1.legend(loc="best", fontsize=12)

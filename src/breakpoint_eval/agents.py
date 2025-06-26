@@ -1,13 +1,18 @@
 import json
 import logging
 import os
-import time
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-import tiktoken
-from lib.chat import ModelInterface, StudentAttempt, Chat
-from lib.codeparsing_utils import *
-from lib.problem_generator import ProblemEnv
+from breakpoint_eval.chat import Chat, ModelInterface, StudentAttempt
+from breakpoint_eval.codeparsing_utils import (
+    FunctionDefInfo,
+    get_source_code_from_name,
+    insert_function_code,
+    parse_python_file,
+    remove_functions_in_file,
+    run_tests,
+)
+from breakpoint_eval.problem import ProblemEnv
 
 
 class CodeAgent:
@@ -16,7 +21,7 @@ class CodeAgent:
         model_name: str = "o3-mini",
         test_budget: int = 3,
         max_iterations: int = 8,
-        max_tokens: int = 40000, 
+        max_tokens: int = 40000,
         mode: str = "fix",
         instructions: str = "",
         repair_mode: str = "target",
@@ -49,7 +54,6 @@ class CodeAgent:
         self.thinking_budget = thinking_budget
         self.file_token_ratio = file_token_ratio
 
-
     def __call__(self, env: ProblemEnv) -> str:
         """
         Fix a broken function using repo exploration and testing.
@@ -67,14 +71,11 @@ class CodeAgent:
         """Run the agent to fix the broken function."""
         self.tests_remaining = self.test_budget
         problem = env.problem
-        has_submitted = False 
+        has_submitted = False
 
         test_info = problem.test_info
 
-
-        logging.info(
-            f"Starting repair of {problem.function_name} in {problem.fpath}"
-        )
+        logging.info(f"Starting repair of {problem.function_name} in {problem.fpath}")
         logging.info(f"Test budget: {self.tests_remaining} runs")
 
         system_prompt = "You are an expert Python programmer modifying a codebase."
@@ -141,7 +142,7 @@ class CodeAgent:
         # Main agent loop
         i = 0
         while i < self.max_iterations:
-            logging.info(f"Iteration {i+1}/{self.max_iterations}")
+            logging.info(f"Iteration {i + 1}/{self.max_iterations}")
 
             # Determine the message to send
             iterations_left = self.max_iterations - i
@@ -164,10 +165,7 @@ class CodeAgent:
                     or tool["function"]["name"] == "replace_function"
                 ]
 
-            elif (
-                self.mode == "break"
-                and has_submitted
-            ):
+            elif self.mode == "break" and has_submitted:
                 # For test iteration mode, provide helpful feedback about the test results
                 message += f"""Your previous corruption attempt received a score of {score}.
                 
@@ -470,7 +468,6 @@ class CodeAgent:
                 }
 
         elif tool_name == "read_file":
-
             file_path = args.get("file_path", "")
             full_path = os.path.join(worker_dir, file_path)
 
@@ -520,7 +517,7 @@ class CodeAgent:
 
             return {
                 "success": True,
-                "message": f"File read successfully",
+                "message": "File read successfully",
                 "content": content,
             }
 
@@ -539,9 +536,7 @@ class CodeAgent:
                         "message": f"Invalid file read: {file_path}",
                     }
 
-                function_infos = parse_python_file(full_path)[
-                    :200
-                ]
+                function_infos = parse_python_file(full_path)[:200]
 
                 def truncate_docstring(func_def: FunctionDefInfo):
                     return (
@@ -552,7 +547,7 @@ class CodeAgent:
 
                 return {
                     "success": True,
-                    "message": f"File read successfully",
+                    "message": "File read successfully",
                     "content": [
                         truncate_docstring(func_def) for func_def in function_infos
                     ],
@@ -590,13 +585,13 @@ class CodeAgent:
 
                         return {
                             "success": True,
-                            "message": f"Function read successfully",
+                            "message": "Function read successfully",
                             "content": "".join(content),
                         }
 
                 return {
                     "success": False,
-                    "message": f"Function not found in the requested file",
+                    "message": "Function not found in the requested file",
                 }
 
             except Exception as e:
@@ -662,10 +657,7 @@ class CodeAgent:
                 passes = test_output.get("passed", 0)
                 test_feedback = f"{passes} passed, {fails} failed.\n"
 
-                if (
-                    self.iterate_with_tests
-                    and self.mode == "break"
-                ):
+                if self.iterate_with_tests and self.mode == "break":
                     current_failed_tests = test_output.get("failed_tests", [])
                     fails_test_names = [test[1] for test in current_failed_tests]
                     test_feedback += f"List of failed tests: {fails_test_names}\n"
@@ -689,7 +681,6 @@ class CodeAgent:
                 }
 
         elif tool_name == "replace_function":
-
             fn_code = args.get("func_code", "")
             full_path = os.path.join(worker_dir, args.get("file_path", ""))
 

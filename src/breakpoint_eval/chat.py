@@ -1,14 +1,13 @@
-import os
 import asyncio
-from typing import Optional, List, Any, Tuple, Type, Union, Dict
 import json
 import logging
-import tiktoken
-
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field, ConfigDict
+import os
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+import tiktoken
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 
 @dataclass
@@ -20,8 +19,8 @@ class Message:
 
 load_dotenv()
 
-from openai import AsyncOpenAI
 from anthropic import Anthropic, AsyncAnthropic
+from openai import AsyncOpenAI
 
 
 class FunctionInfo:
@@ -208,7 +207,6 @@ class ModelInterface:
             last_exception = None
             for attempt in range(max_retries):
                 try:
-
                     request_args = {
                         "messages": formatted_messages,
                         "model": self.model_name,
@@ -268,7 +266,7 @@ class ModelInterface:
 
                 except Exception as e:
                     logging.info(
-                        f"[DEBUG] Attempt {attempt+1}/{max_retries} failed with exception: {e}"
+                        f"[DEBUG] Attempt {attempt + 1}/{max_retries} failed with exception: {e}"
                     )
                     last_exception = e
                     await asyncio.sleep(1.0 * (attempt + 1))
@@ -320,7 +318,7 @@ class ModelInterface:
 
                 except Exception as e:
                     logging.info(
-                        f"[DEBUG] Attempt {attempt+1}/{max_retries} failed with exception: {e}"
+                        f"[DEBUG] Attempt {attempt + 1}/{max_retries} failed with exception: {e}"
                     )
                     last_exception = e
                     await asyncio.sleep(1.0 * (attempt + 1))
@@ -398,7 +396,6 @@ class ModelInterface:
         return tool_call_id
 
     def message_to_string(self, msg: Any) -> str:
-
         # 0. Primitive fast paths
         if isinstance(msg, str):
             return msg
@@ -562,7 +559,7 @@ class Chat:
                 )
                 return
 
-            logging.info(f"Recursively trimming conversation")
+            logging.info("Recursively trimming conversation")
             logging.info(f"Token limit: {limit}")
             logging.info(f"Token count: {token_count}")
 
@@ -635,7 +632,7 @@ class Chat:
             # ── 3. summarise that slice ────────────────────────────────────
 
             msgs_to_summarise = [
-                self.messages[idx] for idx in slice_idxs if not idx in removed
+                self.messages[idx] for idx in slice_idxs if idx not in removed
             ]
             logging.info("Msgs to summarize " + str(msgs_to_summarise))
             summary_msg = await self.recursive_summarize(msgs_to_summarise)
@@ -746,9 +743,9 @@ class StudentAttempt(BaseModel):
         chain_of_thought_str = ""
         if self.moves_taken is not None:
             for i, move in enumerate(self.moves_taken):
-                chain_of_thought_str += f"  Move {i+1}:\n"
+                chain_of_thought_str += f"  Move {i + 1}:\n"
                 for j, step in enumerate(move.steps):
-                    chain_of_thought_str += f"    Step {j+1}:\n"
+                    chain_of_thought_str += f"    Step {j + 1}:\n"
                     chain_of_thought_str += f"      Explanation: {step.explanation}\n"
                     chain_of_thought_str += f"      Output: {step.output}\n"
                 chain_of_thought_str += f"    Final decision: {move.final_answer}\n"

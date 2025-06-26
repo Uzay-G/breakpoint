@@ -1,9 +1,0 @@
-openai
-requests
-wandb
-pydantic
-dotenv
-tiktoken
-anthropic
-radon
-code2flow

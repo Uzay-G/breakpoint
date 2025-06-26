@@ -8,7 +8,7 @@ for both discovery and remove modes at 16 iterations with 4 test budget.
 
 Features:
 - Perfect Solve Mode (binary scores where 1.0 = solved, 0.0 = not solved)
-- Standard error bars assuming IID problems 
+- Standard error bars assuming IID problems
 - Side-by-side comparison of discovery and remove modes
 - SciencePlots style for publication-quality visualization
 
@@ -17,19 +17,16 @@ Usage:
 """
 
 import json
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
-import seaborn as sns
-from scipy import stats
-import statsmodels.api as sm
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from sklearn.cluster import KMeans
-from collections import defaultdict
 
 # Use science plots style with solarize color scheme and white backgrounds
 try:
-    import scienceplots
+    import scienceplots  # noqa: F401
 
     plt.style.use(["science", "grid"])
     # Apply solarize color scheme with white background
@@ -296,16 +293,18 @@ def create_model_comparison_plots(remove_df, discovery_df):
 
     # Create the main comparison plot with larger font sizes
     plt.figure(figsize=(16, 10))
-    
+
     # Set default font sizes
-    plt.rcParams.update({
-        'font.size': 24,
-        'axes.titlesize': 36,
-        'axes.labelsize': 32,
-        'xtick.labelsize': 28,
-        'ytick.labelsize': 28,
-        'legend.fontsize': 22,
-    })
+    plt.rcParams.update(
+        {
+            "font.size": 24,
+            "axes.titlesize": 36,
+            "axes.labelsize": 32,
+            "xtick.labelsize": 28,
+            "ytick.labelsize": 28,
+            "legend.fontsize": 22,
+        }
+    )
 
     # Set up the data for side-by-side bars
     models_remove = [MODEL_DISPLAY.get(m, m) for m in remove_stats["model"]]

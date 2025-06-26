@@ -1,15 +1,22 @@
-import time
 import asyncio
-import threading
 import json
-from typing import Optional
-
-from lib.codeparsing_utils import *
-from lib.agents import *
-from lib.problem_generator import Problem, ProblemEnv
+import logging
+import os
 import shutil
 import sys
-import datetime
+
+from breakpoint_eval.agents import StudentAttempt
+from breakpoint_eval.codeparsing_utils import (
+    build_function_graph,
+    get_source_code_from_name,
+    insert_function_code,
+    prepare_directory,
+    remove_functions_in_file,
+    run_tests,
+)
+from breakpoint_eval.problem_generator import Problem, ProblemEnv
+
+logger = logging.getLogger(__name__)
 
 
 class CorruptionBenchmark:
@@ -32,7 +39,7 @@ class CorruptionBenchmark:
 
         # For discovery mode, don't reveal which function has the issue
         if mode == "discovery":
-            instructions = f"""# Human Evaluation Task - Discovery Mode
+            instructions = """# Human Evaluation Task - Discovery Mode
 
 You are an expert Python programmer tasked with diagnosing and fixing an issue in a codebase.
 
@@ -206,7 +213,6 @@ After you've fixed the code, please record your solution and process for compari
         import os
 
         # Create a temporary working directory
-        repo_path = problem.repo.path
         worker_dir = prepare_directory(problem.repo)
         abs_path = os.path.join(worker_dir, problem.fpath)
         removal_info = remove_functions_in_file(abs_path, problem.function_name)
@@ -302,7 +308,7 @@ After you've fixed the code, please record your solution and process for compari
                         attempt.metadata["right_function"] = right_function
 
                 except Exception as e:
-                    logging.info(
+                    logger.info(
                         f"Failed to load saved attempt: {e}. Rerunning problem."
                     )
                     loaded = False
@@ -421,10 +427,11 @@ After you've fixed the code, please record your solution and process for compari
         grouped_problems = []
 
         for repo_path, repo_problems in problems_by_repo.items():
-            
             if not os.path.exists(repo_path):
-              repo_path = os.path.join(prepare_directory(repos[repo_path]), repos[repo_path].code_path)
-            
+                repo_path = os.path.join(
+                    prepare_directory(repos[repo_path]), repos[repo_path].code_path
+                )
+
             try:
                 function_graph, _ = build_function_graph(repo_path)
 
@@ -468,7 +475,6 @@ After you've fixed the code, please record your solution and process for compari
                         if problem_function_key in related_functions or (
                             not correlated
                         ):
-
                             current_group.append(remaining_problems.pop(i))
                         else:
                             i += 1
@@ -546,13 +552,15 @@ After you've fixed the code, please record your solution and process for compari
         async with self.semaphore:
             base_problem = problem_group[0]
             try:
-              worker_dir = self.prepare_env_for_problem(base_problem, mode)
+                worker_dir = self.prepare_env_for_problem(base_problem, mode)
 
-              for problem in problem_group[1:]:
-                  self._apply_additional_corruption(worker_dir, problem)
-            
+                for problem in problem_group[1:]:
+                    self._apply_additional_corruption(worker_dir, problem)
+
             except Exception as e:
-              print(f"Error preparing environment for {base_problem.function_name}: {e}")
+                print(
+                    f"Error preparing environment for {base_problem.function_name}: {e}"
+                )
 
             base_problem.test_info = await run_tests(
                 worker_dir,
@@ -592,7 +600,9 @@ After you've fixed the code, please record your solution and process for compari
             submit_calls = [
                 (x["args"]["file_path"], x["args"]["func_name"])
                 for x in attempt.metadata["tool_usage"]
-                if x["tool"] == "replace_function" and "file_path" in x["args"] and "func_name" in x["args"]
+                if x["tool"] == "replace_function"
+                and "file_path" in x["args"]
+                and "func_name" in x["args"]
             ]
 
             right_function = True

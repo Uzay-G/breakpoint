@@ -29,7 +29,7 @@ Examples
 import argparse
 import json
 import os
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,7 +40,7 @@ from sklearn.preprocessing import StandardScaler
 
 # SciencePlots style setup
 try:
-    import scienceplots
+    import scienceplots  # noqa: F401
 
     plt.style.use(["science", "grid"])
     # Apply solarize color scheme with white background
@@ -63,12 +63,12 @@ try:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 except ImportError:
@@ -94,12 +94,12 @@ except ImportError:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 
@@ -414,7 +414,7 @@ def compare_all_solved_problems(
 
     # Set up SciencePlots style
     try:
-        import scienceplots
+        import scienceplots  # noqa: F401
 
         plt.style.use(["science", "grid"])
         plt.rcParams.update(
@@ -542,7 +542,6 @@ def compare_all_solved_problems(
 
         # Significance annotation
         y_max = plot_df["Value"].max()
-        star = "*" if p_val < 0.05 else "ns"
         # _add_sig_bracket(ax, 0, 1, y_max * 1.05, f"{star}  p={p_val:.3f}\n d={d:.2f}")
         ax.set_ylim(top=y_max * 1.14)
 
