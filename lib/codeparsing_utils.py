@@ -868,17 +868,22 @@ async def run_tests(repo_dir: str, test_command: str = "pytest", log_id: str = "
             "score": 0,
         }
 
+
+    # parse into string
+    stderr = stderr.decode("utf-8") if stderr else None
+    stdout = stdout.decode("utf-8") if stdout else None
+
     # read reportlog
     try:
         with open(reportlog, "r") as f:
             reportlog_content = f.read()
     except:
         reportlog_content = ""
-        print(f"Errored on {repo_dir}")
-        print(stdout, stderr)
+        print(f"Errored on {repo_dir} trying to open {reportlog}")
+        print(f"Ensure the repo has a venv with pytest and pytest-reportlog installed")
+        if stdout: print(stdout)
+        if stderr: print(stderr)
 
-    # parse stderr into string
-    stderr = stderr.decode("utf-8") if stderr else None
     return parse_pytest_json_report(reportlog_content, stderr=stderr)
 
 

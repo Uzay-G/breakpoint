@@ -38,6 +38,19 @@ You can generate both of these Breakpoint task modes on arbitrary code, if it's 
 
 The central data generation script is run with `python3 -m lib.problem_generator --dump_file <path> <command> options/arguments`
 
+### Checkout repository
+
+Setup your repository with a venv named venv and pytest installed.
+
+```
+git clone https://github.com/mongomock/mongomock.git
+cd mongomock
+uv venv venv
+source venv/bin/activate
+uv pip install .     
+uv pip install pytest pytest-reportlog
+```
+
 ### Process repository for candidate functions
 
 First Breakpoint processes your code to find suitable functions to corrupt.
@@ -45,10 +58,10 @@ First Breakpoint processes your code to find suitable functions to corrupt.
 For example:
 
 ```
-python3 -m lib.problem_generator --dump_file archivy_problems.json cache --num_workers 20  --num_functions 15 --code_path archivy --repo_path ~/repos/archivy
+python3 -m lib.problem_generator --dump_file mongomock_problems.json cache --num_workers 20  --num_functions 15 --code_path mongomock --repo_path ~/repos/mongomock
 ```
 
-This would source 15 functions from the Archivy repository stored locally. The `code_path` points to the location of the source code within the repository. This generates a list of functions that were deemed good as corruptions. 
+This would source 15 functions from the mongomock repository stored locally. The `code_path` points to the location of the source code within the repository. This generates a list of functions that were deemed good as corruptions. 
 See `python3 -m lib.problem_generator cacheall --help` for options on sourcing from a whole directory of codebases.
 
 ### Generating Corruptions

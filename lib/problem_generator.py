@@ -145,7 +145,6 @@ class CodebaseCache:
         return test_output
 
     async def seed_functions(self, n: Optional[int], hardmode=False):
-        print(n, hardmode)
         self.processing_queue = set()
 
         if hardmode:
@@ -483,7 +482,7 @@ def load_problems_from_json(json_file_path):
 if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"logs/corruption_debugger_{timestamp}.log"
-    print(log_filename)
+    print("Logging to", log_filename)
 
     logging.basicConfig(
         filename=log_filename,
@@ -673,7 +672,6 @@ if __name__ == "__main__":
 
         elif args.command == "cache":
 
-            print(args.repo_path, args.code_path)
             repo = Repo(path=args.repo_path, code_path=args.code_path)
             repo.url = get_origin_url(args.repo_path)
             
