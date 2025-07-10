@@ -71,7 +71,7 @@ You can directly use the file from the last step to run `remove` mode evaluation
 The command to source language model generated corruptions is the following:
 
 ```
-python3 -m lib.problem_generator --dump_file corruptions.json corruptall --cache_path <file from previous step> --num_corruptions NUM_CORRUPTIONS --model MODEL --num_workers NUM_WORKERS
+python3 -m lib.problem_generator corruptall --output corruptions.json --input_json <file from previous step> --num_corruptions NUM_CORRUPTIONS --model MODEL --num_workers NUM_WORKERS
 ```
 
 This will save language model corruptions in `corruptions.json`.
@@ -103,7 +103,7 @@ Options:
 For example:
 
 ```
-python3 -m runners.eval --model o4-mini --data <data file from previous step> --mode remove  --workers 15 --max_iterations 16 --test_budget 4 --n_problems 10 --output o4-run.json
+python3 -m runners.eval --model o4-mini --data <data file from previous step> --mode remove  --workers 15 --max_iterations 16 --test_budget 4 --n_problems 10 --output o4-run.jsonl
 ```
 
 This will produce a JSONL with detailed agent traces and the perfect solve rate of the model which you can then analyze using our consolidator and plotter scripts.

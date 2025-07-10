@@ -354,7 +354,7 @@ class SubtleInverseGenerator:
 
             for test_file, test_function in failed_tests[:5]:
                 test_file_path = os.path.join(problem.repo.path, test_file)
-                print(test_file_path)
+                print("Generating corruption for", test_file_path, test_function)
                 test_fn_info = extract_function_info(
                     open(test_file_path, "r").read(), test_function
                 )
@@ -609,7 +609,7 @@ if __name__ == "__main__":
         "--output",
         type=str,
         required=True,
-        help="Path to the output file to save the corruptions (pickle format)",
+        help="Path to the output file to save the corruptions",
     )
     corruptall_parser.add_argument(
         "--model",

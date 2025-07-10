@@ -99,7 +99,7 @@ async def run_eval(config: EvalConfig):
             )
 
             logging.info("Starting evaluation")
-            print(config.num_workers, "FROM EVAL")
+            print(f"Running for model {model_name}, mode {mode}, workers: {config.num_workers}")
             mode_results[model_name] = await benchmark.run_eval(agent, mode=mode)
 
             info_dict = {
@@ -119,6 +119,7 @@ async def run_eval(config: EvalConfig):
 if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = f"logs/eval-{timestamp}.log"
+    print("Logging to", log_file)
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
