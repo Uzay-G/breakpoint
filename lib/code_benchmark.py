@@ -10,6 +10,7 @@ from lib.problem_generator import Problem, ProblemEnv
 import shutil
 import sys
 import datetime
+import os
 
 
 class CorruptionBenchmark:
@@ -205,22 +206,10 @@ After you've fixed the code, please record your solution and process for compari
         Returns:
             The path to the working directory for this problem
         """
-        import os
-
         # Create a temporary working directory
-        repo_path = problem.repo.path
         worker_dir = prepare_directory(problem.repo)
-        abs_path = os.path.join(worker_dir, problem.fpath)
-        removal_info = remove_functions_in_file(abs_path, problem.function_name)
 
-        if mode != "remove":
-            insert_function_code(
-                problem.corruption["code"],
-                removal_info["func_start"],
-                removal_info["func_def_end"],
-                removal_info["indent"],
-                abs_path,
-            )
+        self._apply_additional_corruption(worker_dir, problem, mode)
 
         return worker_dir
 
@@ -447,7 +436,7 @@ After you've fixed the code, please record your solution and process for compari
 
         return related
 
-    async def _eval_combined_problems(self, problem_group, agent, mode, problem_file_path=None):
+    async def _eval_combined_problems(self, problem_group: List[Problem], agent: Agent, mode, problem_file_path=None):
         """
         Evaluate a group of problems by applying corruptions successively.
 
@@ -471,18 +460,24 @@ After you've fixed the code, please record your solution and process for compari
               worker_dir = self.prepare_env_for_problem(base_problem, mode)
 
               for problem in problem_group[1:]:
-                  self._apply_additional_corruption(worker_dir, problem)
+                  self._apply_additional_corruption(worker_dir, problem, mode)
             
             except Exception as e:
               print(f"Error preparing environment for {base_problem.function_name}: {e}")
 
-            # Update test_info to reflect the combined corruption
+            # Update base_problem to reflect the combined corruption
             if is_multi:
+                base_problem = base_problem.model_copy()
+
+                base_problem.function_name = ",".join([p.function_name for p in problem_group])
+
                 base_problem.test_info = await run_tests(
                     worker_dir,
-                    base_problem.repo.test_command,
-                    base_problem.function_name + problem_group[1].function_name,
+                    base_problem.repo.test_command or "",
+                    base_problem.function_name,
                 )
+                base_problem.corruption = None
+
 
             if agent.model_interface.model_name == "human":
                 # Create a README file for human evaluators with our factored-out function
@@ -584,7 +579,7 @@ After you've fixed the code, please record your solution and process for compari
 
             return attempt
 
-    def _apply_additional_corruption(self, worker_dir, problem):
+    def _apply_additional_corruption(self, worker_dir, problem, mode):
         """
         Apply an additional corruption to the working directory.
 
@@ -592,14 +587,14 @@ After you've fixed the code, please record your solution and process for compari
             worker_dir: The working directory.
             problem: The problem containing the corruption to apply.
         """
-        import os
-
         # Get the file path
         file_path = os.path.join(worker_dir, problem.fpath)
 
         # Find and remove the function, then insert the corrupted version
-        try:
-            removal_info = remove_functions_in_file(file_path, problem.function_name)
+        removal_info = remove_functions_in_file(file_path, problem.function_name)
+        if mode != "remove":
+            if problem.corruption is None:
+                raise ValueError(f"No corruption found for {problem.function_name} in {problem.fpath}. Did you forget to run problem_generator with the corrupt or corruptall commands, or mean to run in remove mode?")
             insert_function_code(
                 problem.corruption["code"],
                 removal_info["func_start"],
@@ -607,5 +602,3 @@ After you've fixed the code, please record your solution and process for compari
                 removal_info["indent"],
                 file_path,
             )
-        except:
-            print(f"Could not insert on {problem.function_name}")

@@ -12,13 +12,16 @@ from lib.codeparsing_utils import *
 from lib.problem_generator import ProblemEnv
 
 class Agent(ABC):
+
+    model_interface: ModelInterface
+
     @abstractmethod
     async def __call__(self, env: ProblemEnv) -> StudentAttempt:
-        pass
+        ...
 
     @abstractmethod
     def get_tools(self) -> List[Dict[str, Any]]:
-        pass
+        ...
 class CodeAgent(Agent):
     def __init__(
         self,
@@ -840,7 +843,7 @@ class DryRunAgent(Agent):
             dump_path = Path(self.dump_dir) / Path(env.execution_dir).name
             dump_file = Path(self.dump_dir) / (Path(env.execution_dir).name + ".json")
             shutil.copytree(env.execution_dir, dump_path)
-            json.dump(env.problem.model_dump_json(), open(dump_file, "w"))
+            open(dump_file, "w").write(env.problem.model_dump_json())
             dump_path = str(dump_path)
 
         return StudentAttempt(

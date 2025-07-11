@@ -691,7 +691,8 @@ if __name__ == "__main__":
 
         elif args.command == "cache":
 
-            repo = Repo(path=args.repo_path, code_path=args.code_path)
+            repo_name = Path(args.repo_path).name
+            repo = Repo(path=args.repo_path, code_path=args.code_path, name=repo_name)
             repo.url = get_origin_url(args.repo_path)
             
             # Get the current commit hash
