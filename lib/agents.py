@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import json
 import logging
 import os
+from pathlib import Path
 import time
 from typing import List, Dict, Any
 
@@ -813,6 +814,7 @@ class DryRunAgent(Agent):
         iterate_with_tests=True,
         thinking_budget=2000,
         file_token_ratio=0.1,  # Fraction of context to use for file reading
+        dump_dir: Optional[str] = None
     ):
         self.model_interface = ModelInterface(
             model_name=model_name, max_tokens=max_tokens
@@ -826,11 +828,18 @@ class DryRunAgent(Agent):
         self.iterate_with_tests = iterate_with_tests
         self.thinking_budget = thinking_budget
         self.file_token_ratio = file_token_ratio
+        self.dump_dir = dump_dir
 
     async def __call__(self, env: ProblemEnv) -> StudentAttempt:
         problem = env.problem
         test_info = problem.test_info
         tool_usage = []
+
+        dump_path = None
+        if self.dump_dir is not None:
+            dump_path = Path(self.dump_dir) / Path(env.execution_dir).name
+            shutil.copytree(env.execution_dir, dump_path)
+            dump_path = str(dump_path)
 
         return StudentAttempt(
             problem_spec=problem.function_name,
@@ -843,6 +852,7 @@ class DryRunAgent(Agent):
                 "file_path": problem.fpath,
                 "tool_usage": tool_usage,
                 "test_info": test_info,
+                "dump_path": dump_path,
             },
         )
 

@@ -7,7 +7,7 @@ from lib.agents import CodeAgent, DryRunAgent
 from lib.problem_generator import Problem, load_problems_from_json
 from lib.code_benchmark import CorruptionBenchmark
 
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass
 import argparse
 from pathlib import Path
@@ -65,7 +65,7 @@ class EvalConfig:
     thinking_budget: int = 10000
     multi: int = 1
     dry_run: bool = False
-
+    dump_dir: Optional[str] = None
 
 async def run_eval(config: EvalConfig):
     """
@@ -90,8 +90,8 @@ async def run_eval(config: EvalConfig):
         repair_mode = "target" if mode in ["remove", "corrupt"] else "discovery"
 
         for model_name in config.model_names:
-            if config.dry_run:
-                agent = DryRunAgent()
+            if config.dry_run or config.dump_dir:
+                agent = DryRunAgent(dump_dir=config.dump_dir)
             else:
                 agent = CodeAgent(
                     model_name=model_name,
@@ -177,6 +177,11 @@ if __name__ == "__main__":
         "--dry-run",
         action="store_true",
         help="Skip running the agent, immediately scoring 0",
+    )
+    parser.add_argument(
+        "--dump-dir",
+        type=str,
+        help="Directory to dump the generated code. (implies --dry-run)",
     )
 
     args = parser.parse_args()

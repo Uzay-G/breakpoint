@@ -761,7 +761,7 @@ def setup_repo_env(repo_dir):
 
 def prepare_directory(repo):
     # Create a temporary worker directory
-    worker_dir = tempfile.mkdtemp(prefix="benchmark_")
+    worker_dir = tempfile.mkdtemp(prefix=f"benchmark_{repo.name}_")
 
     # Attempt to clean .pyc files from the worker directory
     command = 'find . -type f -name "*.pyc" -delete'
