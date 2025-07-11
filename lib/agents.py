@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import json
 import logging
 import os
@@ -9,8 +10,15 @@ from lib.chat import ModelInterface, StudentAttempt, Chat
 from lib.codeparsing_utils import *
 from lib.problem_generator import ProblemEnv
 
+class Agent(ABC):
+    @abstractmethod
+    async def __call__(self, env: ProblemEnv) -> StudentAttempt:
+        pass
 
-class CodeAgent:
+    @abstractmethod
+    def get_tools(self) -> List[Dict[str, Any]]:
+        pass
+class CodeAgent(Agent):
     def __init__(
         self,
         model_name: str = "o3-mini",
@@ -50,7 +58,7 @@ class CodeAgent:
         self.file_token_ratio = file_token_ratio
 
 
-    def __call__(self, env: ProblemEnv) -> str:
+    async def __call__(self, env: ProblemEnv) -> StudentAttempt:
         """
         Fix a broken function using repo exploration and testing.
 
@@ -61,7 +69,7 @@ class CodeAgent:
             The fixed function code
         """
 
-        return self._run_agent(env)
+        return await self._run_agent(env)
 
     async def _run_agent(self, env: ProblemEnv) -> StudentAttempt:
         """Run the agent to fix the broken function."""
@@ -147,7 +155,7 @@ class CodeAgent:
             iterations_left = self.max_iterations - i
             message = ""
 
-            current_tools = self._get_tools()
+            current_tools = self.get_tools()
 
             if i == 0:
                 message = instructions
@@ -159,7 +167,7 @@ class CodeAgent:
 
                 current_tools = [
                     tool
-                    for tool in self._get_tools()
+                    for tool in self.get_tools()
                     if tool["function"]["name"] == "submit_attempt"
                     or tool["function"]["name"] == "replace_function"
                 ]
@@ -274,7 +282,7 @@ class CodeAgent:
         )
         return attempt
 
-    def _get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> List[Dict[str, Any]]:
         """Define the tools available to the agent."""
         tools = []
 
@@ -790,3 +798,53 @@ class CodeAgent:
                 return {"success": False, "message": f"Error searching code: {str(e)}"}
         else:
             return {"success": False, "message": f"Unknown tool: {tool_name}"}
+
+class DryRunAgent(Agent):
+    def __init__(
+        self,
+        model_name: str = "o3-mini",
+        test_budget: int = 3,
+        max_iterations: int = 8,
+        max_tokens: int = 40000, 
+        mode: str = "fix",
+        instructions: str = "",
+        repair_mode: str = "target",
+        tool_use=False,
+        iterate_with_tests=True,
+        thinking_budget=2000,
+        file_token_ratio=0.1,  # Fraction of context to use for file reading
+    ):
+        self.model_interface = ModelInterface(
+            model_name=model_name, max_tokens=max_tokens
+        )
+        self.test_budget = test_budget
+        self.max_iterations = max_iterations
+        self.instructions = instructions
+        self.mode = mode
+        self.repair_mode = repair_mode
+        self.tool_use = tool_use
+        self.iterate_with_tests = iterate_with_tests
+        self.thinking_budget = thinking_budget
+        self.file_token_ratio = file_token_ratio
+
+    async def __call__(self, env: ProblemEnv) -> StudentAttempt:
+        problem = env.problem
+        test_info = problem.test_info
+        tool_usage = []
+
+        return StudentAttempt(
+            problem_spec=problem.function_name,
+            student_solution="",
+            actual_solution="",
+            score=0.0,
+            metadata={
+                "tool_usage": [],
+                "repo_path": problem.repo.path,
+                "file_path": problem.fpath,
+                "tool_usage": tool_usage,
+                "test_info": test_info,
+            },
+        )
+
+    def get_tools(self) -> List[Dict[str, Any]]:
+        return []

@@ -3,7 +3,7 @@ import logging
 import json
 import datetime
 
-from lib.agents import CodeAgent
+from lib.agents import CodeAgent, DryRunAgent
 from lib.problem_generator import Problem, load_problems_from_json
 from lib.code_benchmark import CorruptionBenchmark
 
@@ -64,6 +64,7 @@ class EvalConfig:
     log_file: str = ""
     thinking_budget: int = 10000
     multi: int = 1
+    dry_run: bool = False
 
 
 async def run_eval(config: EvalConfig):
@@ -89,14 +90,17 @@ async def run_eval(config: EvalConfig):
         repair_mode = "target" if mode in ["remove", "corrupt"] else "discovery"
 
         for model_name in config.model_names:
-            agent = CodeAgent(
-                model_name=model_name,
-                max_iterations=config.max_iterations,
-                test_budget=config.test_budget,
-                repair_mode=repair_mode,
-                tool_use=config.tool_use,
-                thinking_budget=config.thinking_budget,
-            )
+            if config.dry_run:
+                agent = DryRunAgent()
+            else:
+                agent = CodeAgent(
+                    model_name=model_name,
+                    max_iterations=config.max_iterations,
+                    test_budget=config.test_budget,
+                    repair_mode=repair_mode,
+                    tool_use=config.tool_use,
+                    thinking_budget=config.thinking_budget,
+                )
 
             logging.info("Starting evaluation")
             print(f"Running for model {model_name}, mode {mode}, workers: {config.num_workers}")
@@ -108,7 +112,7 @@ async def run_eval(config: EvalConfig):
                 "max_iterations": config.max_iterations,
                 "thinking_budget": config.thinking_budget,
                 "test_budget": config.test_budget,
-                "tools_allowed": [x["function"]["name"] for x in agent._get_tools()],
+                "tools_allowed": [x["function"]["name"] for x in agent.get_tools()],
                 "log_file": config.log_file,
             }
 
@@ -169,6 +173,11 @@ if __name__ == "__main__":
         nargs="+",
         help="Model name(s) to evaluate. Can provide multiple models.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Skip running the agent, immediately scoring 0",
+    )
 
     args = parser.parse_args()
 
@@ -213,6 +222,7 @@ if __name__ == "__main__":
         thinking_budget=args.thinking_budget,
         multi=args.multi,
         tool_use=True,
+        dry_run=args.dry_run,
     )
 
     asyncio.run(run_eval(config))
