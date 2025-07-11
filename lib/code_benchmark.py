@@ -138,6 +138,7 @@ After you've fixed the code, please record your solution and process for compari
         multi=1,
         test_command="source venv/bin/activate && ./venv/bin/pytest",
         num_workers=8,
+        correlated_corruptions=False,
     ):
         self.problems = problems
         self.total_problems = len(problems)
@@ -148,6 +149,7 @@ After you've fixed the code, please record your solution and process for compari
         self.semaphore = asyncio.Semaphore(num_workers)
         self.test_command = test_command
         self.multi = multi
+        self.correlated_corruptions = correlated_corruptions
 
     def __len__(self):
         """Return the number of problems in the benchmark."""
@@ -260,7 +262,10 @@ After you've fixed the code, please record your solution and process for compari
         # Set up the semaphore to limit concurrency.
         if self.multi != 1:
             results = await self.run_eval_with_combined_corruptions(
-                agent, mode, corruptions_per_group=self.multi
+                agent,
+                mode,
+                corruptions_per_group=self.multi,
+                correlated_corruptions=self.correlated_corruptions,
             )
             return results
         else:
@@ -273,7 +278,7 @@ After you've fixed the code, please record your solution and process for compari
         return results
 
     async def run_eval_with_combined_corruptions(
-        self, agent, mode="remove", corruptions_per_group=4
+        self, agent, mode="remove", corruptions_per_group=4, correlated_corruptions=False
     ):
         """
         Run evaluation where corruptions with related functions in the same codebase
@@ -289,7 +294,7 @@ After you've fixed the code, please record your solution and process for compari
         """
         # Group problems by repository and related functions
         corruption_groups = self._group_problems_by_function_relationship(
-            corruptions_per_group
+            corruptions_per_group, correlated_corruptions
         )
 
         # Create tasks for each group of problems
@@ -311,7 +316,7 @@ After you've fixed the code, please record your solution and process for compari
         )
 
     def _group_problems_by_function_relationship(
-        self, corruptions_per_group=4, correlated=False
+        self, corruptions_per_group=4, correlated_corruptions=False
     ):
         """
         Group problems based on function relationships within each repository.
@@ -343,13 +348,16 @@ After you've fixed the code, please record your solution and process for compari
               repo_path = os.path.join(prepare_directory(repos[repo_path]), repos[repo_path].code_path)
             
             try:
-                logging.info(f"Building function graph for {repo_path}")
-                function_graph, _ = build_function_graph(repo_path)
-                logging.info(f"Function graph built for {repo_path}")
+                if correlated_corruptions:
+                    logging.info(f"Building function graph for {repo_path}")
+                    function_graph, _ = build_function_graph(repo_path)
+                    logging.info(f"Function graph built for {repo_path}")
+                else:
+                    # Unused
+                    function_graph = {}
 
                 # Process each problem in this repository
                 remaining_problems = repo_problems.copy()
-
 
                 while remaining_problems:
                     # Take first problem as seed
@@ -371,10 +379,9 @@ After you've fixed the code, please record your solution and process for compari
                         and len(current_group) < corruptions_per_group
                     ):
                         problem = remaining_problems[i]
-                        problem_function_key = self._get_function_key(problem)
 
                         # Check if this problem's function is related to the base problem
-                        if problem_function_key in related_functions or not correlated:
+                        if not correlated_corruptions or self._get_function_key(problem) in related_functions:
                             current_group.append(remaining_problems.pop(i))
                         else:
                             i += 1
@@ -394,7 +401,7 @@ After you've fixed the code, please record your solution and process for compari
 
         return grouped_problems
 
-    def _get_related_functions(self, function_key, function_graph, max_distance=3):
+    def _get_related_functions(self, function_key: Tuple[str, str], function_graph, max_distance=3) -> Set[Tuple[str, str]]:
         """
         Get a set of functions related to the given function within a certain distance in the graph.
 

@@ -64,6 +64,7 @@ class EvalConfig:
     log_file: str = ""
     thinking_budget: int = 10000
     multi: int = 1
+    correlated_corruptions: bool = False
     dry_run: bool = False
     dump_dir: Optional[str] = None
 
@@ -75,7 +76,10 @@ async def run_eval(config: EvalConfig):
     """
 
     benchmark = CorruptionBenchmark(
-        problems=config.problems, num_workers=config.num_workers, multi=args.multi
+        problems=config.problems,
+        num_workers=config.num_workers,
+        multi=config.multi,
+        correlated_corruptions=config.correlated_corruptions,
     )
 
     results = {}
@@ -167,6 +171,11 @@ if __name__ == "__main__":
         help="For discovery, apply multiple corruptions at once",
     )
     parser.add_argument(
+        "--correlated_corruptions",
+        action="store_true",
+        help="For --multi, should the corruptions be for functions near each other in the function call graph?",
+    )
+    parser.add_argument(
         "--model",
         default=["gpt-4.1-nano"],
         type=str,
@@ -226,8 +235,10 @@ if __name__ == "__main__":
         log_file=log_file,
         thinking_budget=args.thinking_budget,
         multi=args.multi,
+        correlated_corruptions=args.correlated_corruptions,
         tool_use=True,
         dry_run=args.dry_run,
+        dump_dir=args.dump_dir,
     )
 
     asyncio.run(run_eval(config))
