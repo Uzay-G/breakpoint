@@ -394,6 +394,14 @@ After you've fixed the code, please record your solution and process for compari
         results = await asyncio.gather(*tasks)
         return results
 
+    def _get_function_key(self, problem: Problem):
+        return (
+            problem.fpath.replace(
+                problem.repo.code_path + "/", ""
+            ),
+            problem.function_name,
+        )
+
     def _group_problems_by_function_relationship(
         self, corruptions_per_group=4, correlated=False
     ):
@@ -402,6 +410,7 @@ After you've fixed the code, please record your solution and process for compari
 
         Args:
             corruptions_per_group: Maximum number of corruptions to combine in a single group.
+            correlated: Whether to only include problems with related functions.
 
         Returns:
             A list of lists, where each inner list contains problems with related functions.
@@ -426,10 +435,13 @@ After you've fixed the code, please record your solution and process for compari
               repo_path = os.path.join(prepare_directory(repos[repo_path]), repos[repo_path].code_path)
             
             try:
+                logging.info(f"Building function graph for {repo_path}")
                 function_graph, _ = build_function_graph(repo_path)
+                logging.info(f"Function graph built for {repo_path}")
 
                 # Process each problem in this repository
                 remaining_problems = repo_problems.copy()
+
 
                 while remaining_problems:
                     # Take first problem as seed
@@ -437,20 +449,12 @@ After you've fixed the code, please record your solution and process for compari
                     current_group = [base_problem]
 
                     # Get the function key for the base problem
-                    base_function_key = (
-                        base_problem.fpath.replace(
-                            base_problem.repo.code_path + "/", ""
-                        ),
-                        base_problem.function_name,
-                    )
+                    base_function_key = self._get_function_key(base_problem)
 
                     # Identify related functions based on graph
                     related_functions = self._get_related_functions(
                         base_function_key, function_graph
                     )
-
-                    if correlated and len(related_functions) < corruptions_per_group:
-                        continue
 
                     # Find other problems with functions related to the base problem
                     i = 0
@@ -459,22 +463,21 @@ After you've fixed the code, please record your solution and process for compari
                         and len(current_group) < corruptions_per_group
                     ):
                         problem = remaining_problems[i]
-                        problem_function_key = (
-                            problem.fpath.replace(problem.repo.code_path + "/", ""),
-                            problem.function_name,
-                        )
+                        problem_function_key = self._get_function_key(problem)
 
                         # Check if this problem's function is related to the base problem
-                        if problem_function_key in related_functions or (
-                            not correlated
-                        ):
-
+                        if problem_function_key in related_functions or not correlated:
                             current_group.append(remaining_problems.pop(i))
                         else:
                             i += 1
 
                     if len(current_group) == corruptions_per_group:
                         grouped_problems.append(current_group)
+                    else:
+                        logging.warning(f"Not enough related functions remain for {base_problem.function_name} in {repo_path} to form a group of {corruptions_per_group} problems")
+                        # Put back unused problems
+                        remaining_problems.extend(current_group[1:])
+                
 
             except Exception as e:
                 # If we can't build the function graph, create individual groups
