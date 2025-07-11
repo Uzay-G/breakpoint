@@ -8,7 +8,8 @@ graph-trav/runs/
 graph-trav/wandb/
 temp_problems
 venv/
-*.json 
+*.json
+*.jsonl
 *.png
 CLAUDE.md
 commands.txt
@@ -33,3 +34,4 @@ exploratory_analysis/
 new_final_results/
 out*
 final_plots/
+logs/
