@@ -8,6 +8,7 @@ import json
 import datetime
 import shutil
 from pydantic import BaseModel
+from tqdm import tqdm
 
 from lib.codeparsing_utils import *
 from lib.agents import *
@@ -144,7 +145,7 @@ class CodebaseCache:
 
         return test_output
 
-    async def seed_functions(self, n: Optional[int], hardmode=False):
+    async def seed_functions(self, n: Optional[int], hardmode=False, verbose=False):
         self.processing_queue = set()
 
         if hardmode:
@@ -158,9 +159,13 @@ class CodebaseCache:
 
         random.shuffle(self.viable_functions)
 
+        progress = tqdm(total=len(self.viable_functions), desc="Seeding functions", disable=not verbose, leave=False)
+
         queue = asyncio.Queue()
         for func in self.viable_functions:
             queue.put_nowait(func)
+
+        stop_event = asyncio.Event()
 
         async def worker(worker_id, stop_event):
             while not stop_event.is_set() and not queue.empty():
@@ -169,31 +174,45 @@ class CodebaseCache:
                     complexity = self.fn_complexity[func].get("code_line_count", 0)
                     centrality = self.fn_complexity[func]["centrality"].get("degree", 0)
 
-                    if (
-                        complexity >= complexity_lower_bound
-                        and centrality >= centrality_lower_bound
-                    ):
-                        test_output = await self.assess_function(func)
-                        num_failures = test_output["failed"]
+                    if complexity < complexity_lower_bound or centrality < centrality_lower_bound:
+                        progress.update(1)
+                        continue
 
-                        logging.info(
-                            f"Worker {worker_id}: After removing function '{func}', {test_output['failed']} tests failed."
-                        )
+                    test_output = await self.assess_function(func)
 
-                        if num_failures >= failures_lower_bound:
-                            self.fn_info_cache[func] = test_output
+                    if test_output is False:
+                        progress.update(1)
+                        continue
 
-                            logging.info(f"LENGTH: {len(self.fn_info_cache)}")
+                    num_failures = test_output["failed"]
 
-                            if n is not None and len(self.fn_info_cache) >= n:
-                                stop_event.set()
-                                return
+                    logging.info(
+                        f"Worker {worker_id}: After removing function '{func}', {num_failures} tests failed."
+                    )
+
+                    if num_failures < failures_lower_bound:
+                        progress.update(1)
+                        continue
+
+                    self.fn_info_cache[func] = test_output
+
+                    logging.info(f"Functions found: {len(self.fn_info_cache)}")
+                    progress.set_postfix_str(f"Functions found: {len(self.fn_info_cache)}")
+                    progress.update(1)
+
+                    if n is not None and len(self.fn_info_cache) >= n:
+                        stop_event.set()
+                        return
 
                 except asyncio.QueueEmpty:
                     return
 
-        stop_event = asyncio.Event()
+
         await asyncio.gather(*[worker(i, stop_event) for i in range(self.num_workers)])
+
+        progress.close()
+        if n is not None and  len(self.fn_info_cache) < n:
+            logging.warning(f"Only found {len(self.fn_info_cache)} functions, expected {n}")
 
     def dump(self, filename):
         """
@@ -555,8 +574,8 @@ if __name__ == "__main__":
     cache_parser.add_argument(
         "--num_functions",
         type=int,
-        default=0,
-        help="Number of functions to seed (default: 0, meaning no seeding)",
+        default=None,
+        help="Number of functions to seed (default: seed all functions)",
     )
 
     cacheall_parser = subparsers.add_parser(
@@ -691,14 +710,14 @@ if __name__ == "__main__":
             crg = CodebaseCache(repo=repo, num_workers=args.num_workers)
             logging.info("Created a new CodebaseCache instance.")
 
-            if args.num_functions:
-                await crg.seed_functions(args.num_functions)
-                logging.info(f"Seeded {args.num_functions} functions.")
+            await crg.seed_functions(args.num_functions, verbose=True)
+            logging.info(f"Seeded {len(crg.fn_info_cache)} functions.")
 
             problems = crg.get_problems()
+            logging.info(f"Dumping {len(problems)} problems to {args.dump_file}.")
             with open(args.dump_file, "w") as f:
                 f.write(json.dumps([x.model_dump() for x in problems]))
-                logging.info(f"Dumped instance state to {args.dump_file}")
+            logging.info(f"Dumped instance state to {args.dump_file}")
 
         elif args.command == "cacheall":
 
