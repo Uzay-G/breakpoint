@@ -206,7 +206,10 @@ if __name__ == "__main__":
     problems = load_problems_from_json(args.data)
     random.shuffle(problems)
 
-    if args.n_problems == 1 and args.function_name:
+    if args.function_name:
+        if args.n_problems != 1:
+            logging.info(f"Warning: --n_problems is {args.n_problems}, but --function_name is set. Ignoring --n_problems.")
+
         matching_problems = [
             x for x in problems if x.function_name == args.function_name
         ]

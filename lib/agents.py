@@ -838,7 +838,9 @@ class DryRunAgent(Agent):
         dump_path = None
         if self.dump_dir is not None:
             dump_path = Path(self.dump_dir) / Path(env.execution_dir).name
+            dump_file = Path(self.dump_dir) / (Path(env.execution_dir).name + ".json")
             shutil.copytree(env.execution_dir, dump_path)
+            json.dump(env.problem.model_dump_json(), open(dump_file, "w"))
             dump_path = str(dump_path)
 
         return StudentAttempt(

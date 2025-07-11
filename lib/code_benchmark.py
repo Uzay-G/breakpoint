@@ -308,10 +308,11 @@ After you've fixed the code, please record your solution and process for compari
         return results
 
     def _get_function_key(self, problem: Problem):
+        fpath = problem.fpath
+        if fpath.startswith(problem.repo.code_path + "/"):
+            fpath = fpath[len(problem.repo.code_path) + 1:]
         return (
-            problem.fpath.replace(
-                problem.repo.code_path + "/", ""
-            ),
+            fpath,
             problem.function_name,
         )
 
@@ -389,7 +390,7 @@ After you've fixed the code, please record your solution and process for compari
                     if len(current_group) == corruptions_per_group:
                         grouped_problems.append(current_group)
                     else:
-                        logging.warning(f"Not enough related functions remain for {base_problem.function_name} in {repo_path} to form a group of {corruptions_per_group} problems")
+                        logging.warning(f"Not enough related functions{" remain" if grouped_problems else ""} for {base_problem.function_name} in {repo_path} to form a group of {corruptions_per_group} problems")
                         # Put back unused problems
                         remaining_problems.extend(current_group[1:])
                 

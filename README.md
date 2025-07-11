@@ -47,8 +47,8 @@ git clone https://github.com/mongomock/mongomock.git
 cd mongomock
 uv venv venv
 source venv/bin/activate
-uv pip install .     
-uv pip install pytest pytest-reportlog
+uv pip install -e .     
+uv pip install pytest-reportlog
 ```
 
 ### Process repository for candidate functions

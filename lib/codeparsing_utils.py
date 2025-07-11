@@ -227,12 +227,13 @@ def gather_python_files(repo_dir: str) -> list:
     Recursively collect all Python (.py) files from the repository.
     """
     python_files = []
-    for root, _, files in os.walk(repo_dir):
+    for root, dirs, files in os.walk(repo_dir):
+        if "venv" in dirs:
+            dirs.remove("venv")
         for file in files:
             if file.endswith(".py"):
                 python_files.append(os.path.join(root, file))
     return python_files
-
 
 def build_function_graph(
     repo_dir: str, alpha=0.5
@@ -256,17 +257,15 @@ def build_function_graph(
 
     try:
         # Find Python files
-        python_files = []
-        for root, _, files in os.walk(repo_dir):
-            for file in files:
-                if file.endswith(".py"):
-                    python_files.append(os.path.join(root, file))
+        python_files = gather_python_files(repo_dir)
 
         code2flow.code2flow(python_files, temp_path)
 
         # Load code2flow output
         with open(temp_path, "r") as f:
             flow_data = json.load(f)
+
+        logging.info("Building function graph...")
 
         nodes = flow_data.get("graph", {}).get("nodes", {})
         edges = flow_data.get("graph", {}).get("edges", [])
@@ -361,14 +360,11 @@ def parse_repo_for_functions(
        { relative_file_path: [FunctionDefInfo, ...], ... }
     """
     repo_functions = {}
-    for root, _, files in os.walk(repo_dir):
-        for filename in files:
-            if filename.endswith(".py"):
-                abs_path = os.path.join(root, filename)
-                rel_path = os.path.relpath(abs_path, repo_dir)
-                func_infos = parse_python_file(abs_path, build_dependency_info)
-                if func_infos:
-                    repo_functions[rel_path] = func_infos
+    for python_file in gather_python_files(repo_dir):
+        func_infos = parse_python_file(python_file, build_dependency_info)
+        rel_path = os.path.relpath(python_file, repo_dir)
+        if func_infos:
+            repo_functions[rel_path] = func_infos
     return repo_functions
 
 
