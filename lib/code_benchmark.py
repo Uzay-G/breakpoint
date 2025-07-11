@@ -234,109 +234,17 @@ After you've fixed the code, please record your solution and process for compari
             return score
 
     async def eval_problem(self, problem, agent, mode):
-        async with self.semaphore:
-            # Acquire a worker directory from the queue.
 
-            worker_dir = self.prepare_env_for_problem(problem, mode)
-            attempt = None
+        problem_id = f"{problem.function_name}_{agent.model_interface.model_name}_{agent.repair_mode}_{agent.max_iterations}_{self.multi}_{agent.test_budget}"
 
-            if agent.model_interface.model_name == "human":
-                # Create a README file for human evaluators with our factored-out function
-                # Pass the current mode to the instructions generator
-                instructions = self.get_human_eval_instructions(
-                    problem, agent, worker_dir, mode=mode
-                )
+        # Create a directory for storing problem data if it doesn't exist
+        temp_dir = os.path.join(os.getcwd(), "temp_problems")
+        os.makedirs(temp_dir, exist_ok=True)
 
-                # Write the instructions to a README.md file in the worker directory
-                readme_path = os.path.join(worker_dir, "HUMAN_EVAL_README.md")
-                with open(readme_path, "w") as readme_file:
-                    readme_file.write(instructions)
+        # Create a file path for the problem data
+        problem_file_path = os.path.join(temp_dir, f"{problem_id}.json")
 
-                print(f"Problem instance stored in {worker_dir}")
-                print(f"Human evaluation instructions provided in {readme_path}")
-                print(f"Mode: {mode}")
-                sys.exit(0)
-
-            # Offload the blocking agent call.
-            # Create a ProblemEnv object to pass to the agent
-
-            problem_id = f"{problem.function_name}_{agent.model_interface.model_name}_{agent.repair_mode}_{agent.max_iterations}_{self.multi}_{agent.test_budget}"
-
-            # Create a directory for storing problem data if it doesn't exist
-            temp_dir = os.path.join(os.getcwd(), "temp_problems")
-            os.makedirs(temp_dir, exist_ok=True)
-
-            # Create a file path for the problem data
-            problem_file_path = os.path.join(temp_dir, f"{problem_id}.json")
-
-            # Check if the file exists and load the attempt if it does
-            loaded = False
-
-            if os.path.exists(problem_file_path):
-                loaded = True
-                logging.info(f"Loading saved attempt from {problem_file_path}")
-                try:
-                    with open(problem_file_path, "r") as f:
-                        saved_data = json.load(f)
-                        attempt = StudentAttempt(
-                            problem_spec=saved_data["problem"],
-                            student_solution="",  # This field isn't saved in the file
-                            actual_solution="",
-                            score=saved_data["score"],
-                            metadata=saved_data["metadata"],
-                        )
-                        if saved_data["score"] is None:
-                            attempt.score = 0
-                            loaded = False
-
-                        tool_calls = [
-                            (x["args"]["file_path"], x["args"]["func_name"])
-                            for x in attempt.metadata["tool_usage"]
-                            if x["tool"] == "replace_function"
-                        ]
-
-                        right_function = tool_calls and tool_calls[-1] == (
-                            problem.fpath,
-                            problem.function_name,
-                        )
-                        attempt.metadata["right_function"] = right_function
-
-                except Exception as e:
-                    logging.info(
-                        f"Failed to load saved attempt: {e}. Rerunning problem."
-                    )
-                    loaded = False
-
-            if not loaded:
-                # If file doesn't exist, run the agent
-                problem_env = ProblemEnv(problem=problem, execution_dir=worker_dir)
-                attempt = await agent(problem_env)
-
-                tool_calls = [
-                    (x["args"]["file_path"], x["args"]["func_name"])
-                    for x in attempt.metadata["tool_usage"]
-                    if x["tool"] == "replace_function"
-                ]
-
-                right_function = tool_calls and tool_calls[-1] == (
-                    problem.fpath,
-                    problem.function_name,
-                )
-                attempt.metadata["right_function"] = right_function
-
-                result_data = {
-                    "problem": attempt.problem_spec,
-                    "score": attempt.score,
-                    "metadata": attempt.metadata,
-                }
-
-                # Save the problem data to the file
-                with open(problem_file_path, "w") as f:
-                    json.dump(result_data, f)
-
-            shutil.rmtree(worker_dir)
-
-            return attempt
+        return await self._eval_combined_problems([problem], agent, mode, problem_file_path)
 
     async def run_eval(self, agent, mode="remove"):
         """
@@ -531,7 +439,7 @@ After you've fixed the code, please record your solution and process for compari
 
         return related
 
-    async def _eval_combined_problems(self, problem_group, agent, mode):
+    async def _eval_combined_problems(self, problem_group, agent, mode, problem_file_path=None):
         """
         Evaluate a group of problems by applying corruptions successively.
 
@@ -539,12 +447,15 @@ After you've fixed the code, please record your solution and process for compari
             problem_group: A list of problems with related functions.
             agent: The agent to evaluate.
             mode: The mode for applying corruptions.
+            problem_file_path: Where to cache the attempt
 
         Returns:
             The evaluation result.
         """
         if not problem_group:
             return {}
+
+        is_multi = len(problem_group) > 1
 
         async with self.semaphore:
             base_problem = problem_group[0]
@@ -557,11 +468,13 @@ After you've fixed the code, please record your solution and process for compari
             except Exception as e:
               print(f"Error preparing environment for {base_problem.function_name}: {e}")
 
-            base_problem.test_info = await run_tests(
-                worker_dir,
-                base_problem.repo.test_command,
-                base_problem.function_name + problem_group[1].function_name,
-            )
+            # Update test_info to reflect the combined corruption
+            if is_multi:
+                base_problem.test_info = await run_tests(
+                    worker_dir,
+                    base_problem.repo.test_command,
+                    base_problem.function_name + problem_group[1].function_name,
+                )
 
             if agent.model_interface.model_name == "human":
                 # Create a README file for human evaluators with our factored-out function
@@ -580,31 +493,84 @@ After you've fixed the code, please record your solution and process for compari
                 print(f"Mode: {mode}")
                 sys.exit(0)
 
-            problem_env = ProblemEnv(problem=base_problem, execution_dir=worker_dir)
+            # Check if the cache file exists and load the attempt if it does
+            loaded = False
 
-            # Run the agent
-            attempt = await agent(problem_env)
+            if problem_file_path is not None and os.path.exists(problem_file_path):
+                loaded = True
+                logging.info(f"Loading saved attempt from {problem_file_path}")
+                try:
+                    with open(problem_file_path, "r") as f:
+                        saved_data = json.load(f)
+                        attempt = StudentAttempt(
+                            problem_spec=saved_data["problem"],
+                            student_solution="",  # This field isn't saved in the file
+                            actual_solution="",
+                            score=saved_data["score"],
+                            metadata=saved_data["metadata"],
+                        )
+                        if saved_data["score"] is None:
+                            attempt.score = 0
+                            loaded = False
 
-            # Add metadata about the combined corruption
-            attempt.metadata["num_corruptions"] = len(problem_group)
+                        tool_calls = [
+                            (x["args"]["file_path"], x["args"]["func_name"])
+                            for x in attempt.metadata["tool_usage"]
+                            if x["tool"] == "replace_function"
+                        ]
 
-            attempt.metadata["corruption_functions"] = [
-                p.function_name for p in problem_group
-            ]
+                        right_function = tool_calls and tool_calls[-1] == (
+                            problem.fpath,
+                            problem.function_name,
+                        )
+                        attempt.metadata["right_function"] = right_function
 
-            submit_calls = [
-                (x["args"]["file_path"], x["args"]["func_name"])
-                for x in attempt.metadata["tool_usage"]
-                if x["tool"] == "replace_function" and "file_path" in x["args"] and "func_name" in x["args"]
-            ]
+                except Exception as e:
+                    logging.info(
+                        f"Failed to load saved attempt: {e}. Rerunning problem."
+                    )
+                    loaded = False
 
-            right_function = True
+            if not loaded:
+                # If file doesn't exist, run the agent
+                problem_env = ProblemEnv(problem=base_problem, execution_dir=worker_dir)
 
-            for p in problem_group:
-                if (p.fpath, p.function_name) not in submit_calls:
-                    right_function = False
+                # Run the agent
+                attempt = await agent(problem_env)
 
-            attempt.metadata["right_function"] = right_function
+
+
+                # Add metadata about the combined corruption
+                if is_multi:
+                    attempt.metadata["num_corruptions"] = len(problem_group)
+
+                    attempt.metadata["corruption_functions"] = [
+                        p.function_name for p in problem_group
+                    ]
+                
+                # Check that the right functions were changed
+                # TODO: (should this validate that the wrong functions were not changed?)
+                submit_calls = [
+                    (x["args"]["file_path"], x["args"]["func_name"])
+                    for x in attempt.metadata["tool_usage"]
+                    if x["tool"] == "replace_function" and "file_path" in x["args"] and "func_name" in x["args"]
+                ]
+                right_function = True
+                for p in problem_group:
+                    if (p.fpath, p.function_name) not in submit_calls:
+                        right_function = False
+
+                attempt.metadata["right_function"] = right_function
+
+                # Save the attempt to the cache file
+                if problem_file_path is not None:
+                    result_data = {
+                        "problem": attempt.problem_spec,
+                        "score": attempt.score,
+                        "metadata": attempt.metadata,
+                    }
+                    with open(problem_file_path, "w") as f:
+                        json.dump(result_data, f)
 
             shutil.rmtree(worker_dir)
 
