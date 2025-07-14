@@ -66,6 +66,92 @@ def get_origin_url(directory):
         print(f"Failed to get origin url for {directory}: {str(e)}")
         return ""
 
+def get_current_commit(repo_dir: str) -> Optional[str]:
+    # Get the current commit hash
+    try:
+        commit_result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        commit = commit_result.stdout.strip()
+        logging.info(f"Got commit hash: {commit}")
+        return commit
+    except subprocess.CalledProcessError as e:
+        logging.warning(f"Failed to get commit hash: {e}")
+        return None
+
+def infer_code_path(repo_dir: str) -> Optional[str]:
+    """
+    Try to guess the code path (the location of the package) in the repository.
+    """
+    try:
+        potential_code_dirs = [
+            d
+            for d in os.listdir(repo_dir)
+            if os.path.isdir(os.path.join(repo_dir, d))
+            and not d.startswith(".")
+            and d
+            not in ["test", "tests", "venv", "env", "docs", "examples"]
+        ]
+
+        if len(potential_code_dirs) == 1:
+            code_path = potential_code_dirs[0] + "/"
+            logging.info(f"Detected code path: {code_path}")
+        elif repo_dir.lower() in os.listdir(repo_dir):
+            code_path = repo_dir.lower() + "/"
+            logging.info(
+                f"Using repository name as code path: {code_path}"
+            )
+        else:
+            # Look for directory with most Python files
+            py_file_counts = {}
+            for d in potential_code_dirs:
+                dir_path = os.path.join(repo_dir, d)
+                py_files = []
+                for root, _, files in os.walk(dir_path):
+                    py_files.extend(
+                        [f for f in files if f.endswith(".py")]
+                    )
+                py_file_counts[d] = len(py_files)
+
+            # Also count python files in the root directory
+            root_py_files = [
+                f for f in os.listdir(repo_dir) if f.endswith(".py")
+            ]
+            py_file_counts[""] = len(
+                root_py_files
+            )  # Empty string represents root
+
+            # Find directory with most Python files
+            if py_file_counts:
+                best_dir = max(
+                    py_file_counts.items(), key=lambda x: x[1]
+                )
+                if (
+                    best_dir[1] > 0
+                ):  # If there's at least one Python file
+                    code_path = best_dir[0] + "/" if best_dir[0] else ""
+                    logging.info(
+                        f"Using directory with most Python files ({best_dir[1]}): {code_path}"
+                    )
+                else:
+                    print(
+                        f"Skipping {repo_dir} for lack of Python files"
+                    )
+                    return None
+            else:
+                print(
+                    f"Skipping {repo_dir} for lack of clear source directory"
+                )
+                return None
+
+    except Exception as e:
+        logging.error(f"Error detecting code path: {str(e)}")
+        return None
+
 
 def gther_python_files(repo_dir: str) -> list:
     """
@@ -697,25 +783,40 @@ def insert_function_code(
 def get_venv_env(venv_dir):
     """
     Return a copy of the current environment with the virtual environment activated.
+    Uses venv (built-in) and subprocess to get the correct environment variables.
     """
     env = os.environ.copy()
     env["VIRTUAL_ENV"] = venv_dir
-    env["PATH"] = os.path.join(venv_dir, "bin") + os.pathsep + env.get("PATH", "")
+    
+    # Unset PYTHONHOME to prevent conflicts with the virtual environment
+    env.pop("PYTHONHOME", None)
+
+    env.pop("SCRIPT_PATH", None)
+    
+    # Update PATH to prioritize virtual environment binaries
+    if os.name == 'nt':  # Windows
+        scripts_dir = os.path.join(venv_dir, "Scripts")
+        env["PATH"] = scripts_dir + os.pathsep + env.get("PATH", "")
+    else:  # Unix/Linux/macOS
+        bin_dir = os.path.join(venv_dir, "bin")
+        env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
+    
     return env
 
 
 def setup_repo_env(repo_dir):
 
     venv_dir = os.path.join(repo_dir, "venv")
+
     if not os.path.exists(venv_dir):
-        print(f"Creating virtual environment in {venv_dir}...")
+        logging.info(f"Creating virtual environment in {venv_dir}...")
         try:
             subprocess.run(["python3", "-m", "venv", venv_dir], check=True)
         except subprocess.CalledProcessError as e:
-            print(f"Error creating virtual environment {e}")
+            logging.error(f"Error creating virtual environment {e}")
             return False
     else:
-        print("Virtual environment already exists; skipping creation.")
+        logging.info("Virtual environment already exists; skipping creation.")
 
     venv_env = get_venv_env(venv_dir)
 
@@ -723,35 +824,32 @@ def setup_repo_env(repo_dir):
     requirements_path = os.path.join(repo_dir, "requirements.txt")
     dev_req = os.path.join(repo_dir, "requirements-dev.txt")
     dev_req2 = os.path.join(repo_dir, "requirements/requirements_dev.txt")
-    if os.path.exists(requirements_path):
-        print(f"Installing dependencies from requirements.txt...")
-        try:
-            subprocess.run(
-                ["pip3", "install", "-r", requirements_path], check=True, env=venv_env
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Error installing dependencies for  {e}")
-            return False
-    try:
-        subprocess.run(
-            ["pip3", "install", "-e", "."], check=True, env=venv_env, cwd=repo_dir
-        )
-    except:
-        pass
-    try:
-        subprocess.run(["pip3", "install", "-r", dev_req], check=True, env=venv_env)
-    except:
-        pass
-    try:
-        subprocess.run(["pip3", "install", "-r", dev_req2], check=True, env=venv_env)
-    except:
-        pass
 
-    try:
-        subprocess.run(["pip", "install", "pytest", "pytest-reportlog"], check=True, env=venv_env)
-    except subprocess.CalledProcessError as e:
-        print(f"Error installing pytest for {e}")
+    def run(command: List[str], error_message: str):
+        try:
+            result = subprocess.run(command, check=True, env=venv_env, capture_output=True, text=True)
+            logging.info(result.stdout)
+            if result.stderr:
+                logging.warning(result.stderr)
+            return True
+        except subprocess.CalledProcessError as e:
+            logging.error(f"{error_message}: {e}")
+            if e.stdout:
+                logging.error(f"stdout: {e.stdout}")
+            if e.stderr:
+                logging.error(f"stderr: {e.stderr}")
+            return False
+
+    if os.path.exists(requirements_path):
+        logging.info("Installing dependencies from requirements.txt...")
+        run(["pip", "install", "-r", requirements_path], "Error installing dependencies from requirements.txt")
+
+    run(["pip", "install", "-e", "."], "Ignoring error installing package")
+    run(["pip", "install", "-r", dev_req], "Ignoring error installing dev dependencies")    
+    run(["pip", "install", "-r", dev_req2], "Ignoring error installing dev dependencies")
+    if run(["pip", "install", "pytest", "pytest-reportlog"], "Error installing pytest"):
         return False
+
     return venv_env
 
 
@@ -824,6 +922,7 @@ def prepare_directory(repo):
     shutil.copytree(original_path, worker_dir)
 
     return worker_dir
+
 
 
 async def run_tests(repo_dir: str, test_command: str = "pytest", log_id: str = ""):

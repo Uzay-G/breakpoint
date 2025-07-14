@@ -694,20 +694,8 @@ if __name__ == "__main__":
             repo_name = Path(args.repo_path).name
             repo = Repo(path=args.repo_path, code_path=args.code_path, name=repo_name)
             repo.url = get_origin_url(args.repo_path)
-            
-            # Get the current commit hash
-            try:
-                commit_result = subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    cwd=args.repo_path,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                repo.commit = commit_result.stdout.strip()
-                logging.info(f"Got commit hash: {repo.commit}")
-            except subprocess.CalledProcessError as e:
-                logging.warning(f"Failed to get commit hash: {e}")
+            repo.commit = get_current_commit(args.repo_path)
+
             crg = CodebaseCache(repo=repo, num_workers=args.num_workers)
             logging.info("Created a new CodebaseCache instance.")
 
@@ -736,9 +724,11 @@ if __name__ == "__main__":
                 if os.path.isdir(os.path.join(args.repos_dir, d))
             ]
 
-            for repo_name in repo_dirs:
-                if repo_name in repos:
-                    continue
+            to_process = [repo_name for repo_name in repo_dirs if repo_name not in repos]
+
+            for repo_name in (progress := tqdm(to_process, desc="Processing repositories")):
+
+                progress.set_description(f"Processing repository: {repo_name}")
                 repo_path = os.path.join(args.repos_dir, repo_name)
 
                 if not repo_path.endswith("/"):
@@ -747,90 +737,17 @@ if __name__ == "__main__":
                 logging.info(
                     f"\n{'='*80}\nProcessing repository: {repo_name}\n{'='*80}"
                 )
-                venv_path = os.path.join(repo_path, "venv")
 
-                # Get repository configuration or use default
-                install_cmd = f"source {venv_path}/bin/activate && ./venv/bin/pip install pytest-reportlog"
-                logging.info("Installing pytest-reportlog...")
-                process = await asyncio.create_subprocess_shell(
-                    install_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    executable="/bin/bash",
-                    cwd=repo_path,
-                )
-                await process.communicate()
+                setup_repo_env(repo_path)
 
-                code_path = None
                 test_command = "source venv/bin/activate && ./venv/bin/pytest"
                 n_functions = args.functions_per_repo
 
-                # If code_path is not specified, try to detect it
+                code_path = infer_code_path(repo_path)
+
                 if not code_path:
-                    try:
-                        potential_code_dirs = [
-                            d
-                            for d in os.listdir(repo_path)
-                            if os.path.isdir(os.path.join(repo_path, d))
-                            and not d.startswith(".")
-                            and d
-                            not in ["test", "tests", "venv", "env", "docs", "examples"]
-                        ]
-
-                        if len(potential_code_dirs) == 1:
-                            code_path = potential_code_dirs[0] + "/"
-                            logging.info(f"Detected code path: {code_path}")
-                        elif repo_name.lower() in os.listdir(repo_path):
-                            code_path = repo_name.lower() + "/"
-                            logging.info(
-                                f"Using repository name as code path: {code_path}"
-                            )
-                        else:
-                            # Look for directory with most Python files
-                            py_file_counts = {}
-                            for d in potential_code_dirs:
-                                dir_path = os.path.join(repo_path, d)
-                                py_files = []
-                                for root, _, files in os.walk(dir_path):
-                                    py_files.extend(
-                                        [f for f in files if f.endswith(".py")]
-                                    )
-                                py_file_counts[d] = len(py_files)
-
-                            # Also count python files in the root directory
-                            root_py_files = [
-                                f for f in os.listdir(repo_path) if f.endswith(".py")
-                            ]
-                            py_file_counts[""] = len(
-                                root_py_files
-                            )  # Empty string represents root
-
-                            # Find directory with most Python files
-                            if py_file_counts:
-                                best_dir = max(
-                                    py_file_counts.items(), key=lambda x: x[1]
-                                )
-                                if (
-                                    best_dir[1] > 0
-                                ):  # If there's at least one Python file
-                                    code_path = best_dir[0] + "/" if best_dir[0] else ""
-                                    logging.info(
-                                        f"Using directory with most Python files ({best_dir[1]}): {code_path}"
-                                    )
-                                else:
-                                    print(
-                                        f"Skipping {repo_path} for lack of Python files"
-                                    )
-                                    continue
-                            else:
-                                print(
-                                    f"Skipping {repo_path} for lack of clear source directory"
-                                )
-                                continue
-
-                    except Exception as e:
-                        logging.error(f"Error detecting code path: {str(e)}")
-                        continue
+                    logging.info(f"Could not infer code path for {repo_name}, skipping")
+                    continue
 
                 repo_info = Repo(
                     name=repo_name,
@@ -840,23 +757,10 @@ if __name__ == "__main__":
                 )
 
                 repo_info.url = get_origin_url(repo_path)
-                
-                # Get the current commit hash
-                try:
-                    commit_result = subprocess.run(
-                        ["git", "rev-parse", "HEAD"],
-                        cwd=repo_path,
-                        capture_output=True,
-                        text=True,
-                        check=True
-                    )
-                    repo_info.commit = commit_result.stdout.strip()
-                    logging.info(f"Got commit hash: {repo_info.commit}")
-                except subprocess.CalledProcessError as e:
-                    logging.warning(f"Failed to get commit hash for {repo_name}: {e}")
+                repo_info.commit = get_current_commit(repo_path)
+
                 repo_code_info = get_repo_info(os.path.join(repo_path, code_path))
 
-                print(repo_code_info)
                 if repo_code_info["functions_count"] < 100 or not repo_info.url:
                     continue
 

@@ -43,6 +43,7 @@ The central data generation script is run with `python3 -m lib.problem_generator
 Setup your repository with a venv named venv and pytest installed.
 
 ```
+cd ~/repos
 git clone https://github.com/mongomock/mongomock.git
 cd mongomock
 uv venv venv
@@ -109,6 +110,16 @@ python3 -m runners.eval --model o4-mini --data <data file from previous step> --
 This will produce a JSONL with detailed agent traces and the perfect solve rate of the model which you can then analyze using our consolidator and plotter scripts.
 
 If you have any problems along the way please open an issue!
+
+### Bulk process
+
+Optionally, you can check out multiple python packages as subdirectoires of a `repos_dir` and bulk process the `cache` and `corrupt` functions with `cacheall` and `corruptall`:
+
+```
+python3 -m lib.problem_generator cacheall --repos_dir ~/repos --output_json all.json  --num_workers 20 --functions_per_repo 15
+```
+
+
 
 ## Contributing
 
