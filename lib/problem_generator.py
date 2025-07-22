@@ -477,7 +477,7 @@ def load_problems_from_json(json_file_path):
         repo = Repo(
             path=problem["repo"]["path"],
             name=problem["repo"]["name"],
-            code_path=problem["repo"].get("name", ""),
+            code_path=problem["repo"].get("code_path", ""),
             url=problem["repo"].get("url", ""),
             test_command=problem["repo"].get(
                 "test_command", "source venv/bin/activate && ./venv/bin/pytest"
@@ -761,7 +761,11 @@ if __name__ == "__main__":
 
                 repo_code_info = get_repo_info(os.path.join(repo_path, code_path))
 
-                if repo_code_info["functions_count"] < 100 or not repo_info.url:
+                if repo_code_info["functions_count"] < 100:
+                    logging.warning(f"Skipping {repo_name} because it has less than 100 functions")
+                    continue
+                elif not repo_info.url:
+                    logging.warning(f"Skipping {repo_name} because it has no url")
                     continue
 
                 try:

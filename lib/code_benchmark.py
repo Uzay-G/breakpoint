@@ -386,6 +386,7 @@ After you've fixed the code, please record your solution and process for compari
 
             except Exception as e:
                 # If we can't build the function graph, create individual groups
+                logging.warning(f"Error building function graph for {repo_path}: {str(e)}")
                 print(f"Error building function graph for {repo_path}: {str(e)}")
                 continue
 

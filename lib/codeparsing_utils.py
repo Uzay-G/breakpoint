@@ -93,8 +93,7 @@ def infer_code_path(repo_dir: str) -> Optional[str]:
             for d in os.listdir(repo_dir)
             if os.path.isdir(os.path.join(repo_dir, d))
             and not d.startswith(".")
-            and d
-            not in ["test", "tests", "venv", "env", "docs", "examples"]
+            and d not in ["test", "tests", "venv", "env", "docs", "examples"]
         ]
 
         if len(potential_code_dirs) == 1:
@@ -330,6 +329,10 @@ def build_function_graph(
     Build a function dependency graph across the entire repository.
     """
 
+    if not os.path.exists(repo_dir):
+        logging.warning(f"Repository directory {repo_dir} does not exist")
+        raise Exception(f"Repository directory {repo_dir} does not exist")
+
     # Get function info using existing parser
     repo_functions = parse_repo_for_functions(repo_dir)
 
@@ -346,6 +349,11 @@ def build_function_graph(
     try:
         # Find Python files
         python_files = gather_python_files(repo_dir)
+
+        if len(python_files) == 0:
+            logging.warning(f"No Python files found in {repo_dir}")
+            raise Exception(f"No Python files found in {repo_dir}")
+
 
         code2flow.code2flow(python_files, temp_path)
 
