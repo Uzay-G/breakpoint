@@ -100,54 +100,56 @@ def infer_code_path(repo_dir: str) -> Optional[str]:
         if len(potential_code_dirs) == 1:
             code_path = potential_code_dirs[0] + "/"
             logging.info(f"Detected code path: {code_path}")
-        elif repo_dir.lower() in os.listdir(repo_dir):
+            return code_path
+
+
+        if repo_dir.lower() in os.listdir(repo_dir):
             code_path = repo_dir.lower() + "/"
             logging.info(
                 f"Using repository name as code path: {code_path}"
             )
-        else:
-            # Look for directory with most Python files
-            py_file_counts = {}
-            for d in potential_code_dirs:
-                dir_path = os.path.join(repo_dir, d)
-                py_files = []
-                for root, _, files in os.walk(dir_path):
-                    py_files.extend(
-                        [f for f in files if f.endswith(".py")]
-                    )
-                py_file_counts[d] = len(py_files)
-
-            # Also count python files in the root directory
-            root_py_files = [
-                f for f in os.listdir(repo_dir) if f.endswith(".py")
-            ]
-            py_file_counts[""] = len(
-                root_py_files
-            )  # Empty string represents root
-
-            # Find directory with most Python files
-            if py_file_counts:
-                best_dir = max(
-                    py_file_counts.items(), key=lambda x: x[1]
+            return code_path
+        
+        # Look for directory with most Python files
+        py_file_counts = {}
+        for d in potential_code_dirs:
+            dir_path = os.path.join(repo_dir, d)
+            py_files = []
+            for root, _, files in os.walk(dir_path):
+                py_files.extend(
+                    [f for f in files if f.endswith(".py")]
                 )
-                if (
-                    best_dir[1] > 0
-                ):  # If there's at least one Python file
-                    code_path = best_dir[0] + "/" if best_dir[0] else ""
-                    logging.info(
-                        f"Using directory with most Python files ({best_dir[1]}): {code_path}"
-                    )
-                else:
-                    print(
-                        f"Skipping {repo_dir} for lack of Python files"
-                    )
-                    return None
+            py_file_counts[d] = len(py_files)
+
+        # Also count python files in the root directory
+        root_py_files = [
+            f for f in os.listdir(repo_dir) if f.endswith(".py")
+        ]
+        py_file_counts[""] = len(
+            root_py_files
+        )  # Empty string represents root
+
+        # Find directory with most Python files
+        if py_file_counts:
+            best_dir = max(
+                py_file_counts.items(), key=lambda x: x[1]
+            )
+            if best_dir[1] > 0:  # If there's at least one Python file
+                code_path = best_dir[0] + "/" if best_dir[0] else ""
+                logging.info(
+                    f"Using directory with most Python files ({best_dir[1]}): {code_path}"
+                )
+                return code_path
             else:
                 print(
-                    f"Skipping {repo_dir} for lack of clear source directory"
+                    f"Skipping {repo_dir} for lack of Python files"
                 )
                 return None
-
+        else:
+            print(
+                f"Skipping {repo_dir} for lack of clear source directory"
+            )
+            return None
     except Exception as e:
         logging.error(f"Error detecting code path: {str(e)}")
         return None
@@ -825,19 +827,20 @@ def setup_repo_env(repo_dir):
     dev_req = os.path.join(repo_dir, "requirements-dev.txt")
     dev_req2 = os.path.join(repo_dir, "requirements/requirements_dev.txt")
 
-    def run(command: List[str], error_message: str):
+    def run(command: List[str], error_message = None):
         try:
-            result = subprocess.run(command, check=True, env=venv_env, capture_output=True, text=True)
+            result = subprocess.run(command, check=True, env=venv_env, capture_output=True, text=True, cwd=repo_dir)
             logging.info(result.stdout)
             if result.stderr:
                 logging.warning(result.stderr)
             return True
         except subprocess.CalledProcessError as e:
-            logging.error(f"{error_message}: {e}")
-            if e.stdout:
-                logging.error(f"stdout: {e.stdout}")
-            if e.stderr:
-                logging.error(f"stderr: {e.stderr}")
+            if error_message:
+                logging.error(f"{error_message}: {e}")
+                if e.stdout:
+                    logging.error(f"stdout: {e.stdout}")
+                if e.stderr:
+                    logging.error(f"stderr: {e.stderr}")
             return False
 
     if os.path.exists(requirements_path):
@@ -845,9 +848,12 @@ def setup_repo_env(repo_dir):
         run(["pip", "install", "-r", requirements_path], "Error installing dependencies from requirements.txt")
 
     run(["pip", "install", "-e", "."], "Ignoring error installing package")
-    run(["pip", "install", "-r", dev_req], "Ignoring error installing dev dependencies")    
-    run(["pip", "install", "-r", dev_req2], "Ignoring error installing dev dependencies")
-    if run(["pip", "install", "pytest", "pytest-reportlog"], "Error installing pytest"):
+    if os.path.exists(dev_req):
+        run(["pip", "install", "-r", dev_req], "Ignoring error installing dev dependencies")    
+    if os.path.exists(dev_req2):
+        run(["pip", "install", "-r", dev_req2], "Ignoring error installing dev dependencies")
+    pytest_success = run(["pip", "install", "pytest", "pytest-reportlog"], "Error installing pytest")
+    if not pytest_success:
         return False
 
     return venv_env
@@ -989,6 +995,7 @@ async def test_without_function(
     Removes the target function from one worker_dir copy of the repo.
     Runs the test suite and returns the number of failed tests.
     """
+    logging.info(f"Testing without function {removal_location} in {code_path}")
     rel_path, func_name = removal_location
     abs_path = os.path.join(worker_dir, code_path, rel_path)
     content_after_deleted = open(abs_path, "r", encoding="utf-8").read()

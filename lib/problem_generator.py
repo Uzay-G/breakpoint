@@ -187,7 +187,7 @@ class CodebaseCache:
                     num_failures = test_output["failed"]
 
                     logging.info(
-                        f"Worker {worker_id}: After removing function '{func}', {num_failures} tests failed."
+                        f"Worker {worker_id}: After removing function {func}, {num_failures} tests failed."
                     )
 
                     if num_failures < failures_lower_bound:
@@ -775,7 +775,7 @@ if __name__ == "__main__":
                         test_command=test_command,
                     )
 
-                    await cache.seed_functions(n_functions, hardmode=args.hard)
+                    await cache.seed_functions(n_functions, hardmode=args.hard, verbose=True)
 
                     problems += [x.model_dump() for x in cache.get_problems()]
 
