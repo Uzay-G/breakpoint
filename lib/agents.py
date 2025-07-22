@@ -15,6 +15,8 @@ class Agent(ABC):
 
     model_interface: ModelInterface
 
+    is_cacheable: bool = True
+
     @abstractmethod
     async def __call__(self, env: ProblemEnv) -> StudentAttempt:
         ...
@@ -22,6 +24,7 @@ class Agent(ABC):
     @abstractmethod
     def get_tools(self) -> List[Dict[str, Any]]:
         ...
+
 class CodeAgent(Agent):
     def __init__(
         self,
@@ -60,7 +63,7 @@ class CodeAgent(Agent):
         self.iterate_with_tests = iterate_with_tests
         self.thinking_budget = thinking_budget
         self.file_token_ratio = file_token_ratio
-
+        self.is_cacheable = True
 
     async def __call__(self, env: ProblemEnv) -> StudentAttempt:
         """
@@ -832,6 +835,7 @@ class DryRunAgent(Agent):
         self.thinking_budget = thinking_budget
         self.file_token_ratio = file_token_ratio
         self.dump_dir = dump_dir
+        self.is_cacheable = False
 
     async def __call__(self, env: ProblemEnv) -> StudentAttempt:
         problem = env.problem
@@ -842,6 +846,7 @@ class DryRunAgent(Agent):
         if self.dump_dir is not None:
             dump_path = Path(self.dump_dir) / Path(env.execution_dir).name
             dump_file = Path(self.dump_dir) / (Path(env.execution_dir).name + ".json")
+            logging.info(f"Dumping problem {problem.function_name} to {dump_path}")
             shutil.copytree(env.execution_dir, dump_path)
             open(dump_file, "w").write(env.problem.model_dump_json())
             dump_path = str(dump_path)

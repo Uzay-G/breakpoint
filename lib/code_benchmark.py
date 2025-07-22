@@ -499,9 +499,7 @@ After you've fixed the code, please record your solution and process for compari
             # Check if the cache file exists and load the attempt if it does
             loaded = False
 
-            if problem_file_path is not None and os.path.exists(problem_file_path):
-                loaded = True
-                logging.info(f"Loading saved attempt from {problem_file_path}")
+            if agent.is_cacheable and problem_file_path is not None and os.path.exists(problem_file_path):
                 try:
                     with open(problem_file_path, "r") as f:
                         saved_data = json.load(f)
@@ -527,12 +525,13 @@ After you've fixed the code, please record your solution and process for compari
                             problem.function_name,
                         )
                         attempt.metadata["right_function"] = right_function
+                    logging.info(f"Loading saved attempt from {problem_file_path}, skipping evaluation")
+                    loaded = True
 
                 except Exception as e:
                     logging.info(
                         f"Failed to load saved attempt: {e}. Rerunning problem."
                     )
-                    loaded = False
 
             if not loaded:
                 # If file doesn't exist, run the agent
@@ -540,8 +539,6 @@ After you've fixed the code, please record your solution and process for compari
 
                 # Run the agent
                 attempt = await agent(problem_env)
-
-
 
                 # Add metadata about the combined corruption
                 if is_multi:
@@ -566,7 +563,7 @@ After you've fixed the code, please record your solution and process for compari
                 attempt.metadata["right_function"] = right_function
 
                 # Save the attempt to the cache file
-                if problem_file_path is not None:
+                if problem_file_path is not None and agent.is_cacheable:
                     result_data = {
                         "problem": attempt.problem_spec,
                         "score": attempt.score,
