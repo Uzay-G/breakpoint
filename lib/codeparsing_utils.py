@@ -12,7 +12,7 @@ from collections import deque
 import asyncio
 import tempfile
 from radon.complexity import cc_visit
-from radon.metrics import h_visit, mi_visit
+from radon.metrics import h_visit
 import subprocess
 import textwrap
 import code2flow
@@ -140,31 +140,14 @@ def infer_code_path(repo_dir: str) -> Optional[str]:
                 )
                 return code_path
             else:
-                print(
-                    f"Skipping {repo_dir} for lack of Python files"
-                )
+                print("Skipping {repo_dir} for lack of Python files")
                 return None
         else:
-            print(
-                f"Skipping {repo_dir} for lack of clear source directory"
-            )
+            print(f"Skipping {repo_dir} for lack of clear source directory")
             return None
     except Exception as e:
         logging.error(f"Error detecting code path: {str(e)}")
         return None
-
-
-def gther_python_files(repo_dir: str) -> list:
-    """
-    Recursively collect all Python (.py) files from the repository.
-    """
-    python_files = []
-    for root, _, files in os.walk(repo_dir):
-        for file in files:
-            if file.endswith(".py"):
-                python_files.append(os.path.join(root, file))
-    return python_files
-
 
 class FunctionDefInfo:
     """
@@ -1570,7 +1553,7 @@ def get_repo_info(code_path: str) -> Dict[str, float]:
 
     except Exception as exc:  # noqa: BLE001
         logging.exception("Error analysing repo at %s: %s", code_path, exc)
-        print(e)
+        print("Error analysing repo at %s: %s", exc)
         info["error"] = str(exc)
 
     return info

@@ -478,7 +478,7 @@ class CodeAgent(Agent):
                 }
 
             except Exception as e:
-                print(e)
+                print("Error listing directory:", e)
                 return {
                     "success": False,
                     "message": f"Error listing directory: {str(e)}",

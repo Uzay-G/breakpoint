@@ -191,9 +191,7 @@ def main():
             print(f"Fetching page {page}...")
             response = requests.get(search_url, params=params, headers=HEADERS)
             if response.status_code != 200:
-                print(
-                    "Error fetching repositories:", response.status_code, response.text
-                )
+                print("Error fetching repositories:", response.status_code, response.text)
                 break
 
             results = response.json()
