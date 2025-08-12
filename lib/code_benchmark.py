@@ -323,7 +323,7 @@ After you've fixed the code, please record your solution and process for compari
         problems_by_repo = {}
         repos = {}
         for problem in self.problems:
-            repo_path = os.path.join(problem.repo.path, problem.repo.code_path)
+            repo_path = problem.repo.path
             if repo_path not in problems_by_repo:
                 problems_by_repo[repo_path] = []
             problems_by_repo[repo_path].append(problem)
@@ -335,7 +335,7 @@ After you've fixed the code, please record your solution and process for compari
         for repo_path, repo_problems in problems_by_repo.items():
             
             if not os.path.exists(repo_path):
-              repo_path = os.path.join(prepare_directory(repos[repo_path]), repos[repo_path].code_path)
+              repo_path = prepare_directory(repos[repo_path])
             
             try:
                 if correlated_corruptions:
