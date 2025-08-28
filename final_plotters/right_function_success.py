@@ -3,22 +3,23 @@
 This script analyzes the relationship between finding the right function
 and successfully solving problems in discovery mode.
 
-It shows that when models identify the correct function, they almost always 
+It shows that when models identify the correct function, they almost always
 solve the problem correctly, demonstrating that finding the right function
 is a necessary but not sufficient condition for solving the problem.
 """
 
-import json
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 import argparse
-from collections import defaultdict
+import json
 import os
+from collections import defaultdict
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # Use science plots style with solarize color scheme and white backgrounds
 try:
-    import scienceplots
+    import scienceplots  # noqa: F401
 
     plt.style.use(["science", "grid"])
     # Apply solarize color scheme with white background
@@ -41,12 +42,12 @@ try:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 18,
-            'axes.titlesize': 22,
-            'axes.labelsize': 20,
-            'xtick.labelsize': 16,
-            'ytick.labelsize': 16,
-            'legend.fontsize': 16,
+            "font.size": 18,
+            "axes.titlesize": 22,
+            "axes.labelsize": 20,
+            "xtick.labelsize": 16,
+            "ytick.labelsize": 16,
+            "legend.fontsize": 16,
         }
     )
 except ImportError:
@@ -72,12 +73,12 @@ except ImportError:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 18,
-            'axes.titlesize': 22,
-            'axes.labelsize': 20,
-            'xtick.labelsize': 16,
-            'ytick.labelsize': 16,
-            'legend.fontsize': 16,
+            "font.size": 18,
+            "axes.titlesize": 22,
+            "axes.labelsize": 20,
+            "xtick.labelsize": 16,
+            "ytick.labelsize": 16,
+            "legend.fontsize": 16,
         }
     )
 
@@ -119,7 +120,7 @@ def analyze_right_function_correlation(data, test_config="discovery_16iter_4test
         # Extract model performances for the specified test configuration
         model_performance = problem.get("model_performance", {})
         right_function_found = problem.get("right_function_found", {})
-        tool_call_lists = problem.get("tool_call_lists", {})
+        problem.get("tool_call_lists", {})
 
         for model, configs in model_performance.items():
             if test_config in configs:
@@ -238,7 +239,7 @@ def plot_nested_bar_chart(results, output_dir="final_plots"):
 
     # Create the nested bars
     # First, create the outer bars (right function identification rate)
-    outer_bars = ax.bar(
+    ax.bar(
         x,
         right_function_rates,
         width=bar_width,
@@ -249,7 +250,7 @@ def plot_nested_bar_chart(results, output_dir="final_plots"):
     )
 
     # Then, create the inner bars (overall success rate)
-    inner_bars = ax.bar(
+    ax.bar(
         x,
         success_rates,
         width=bar_width,
@@ -267,18 +268,28 @@ def plot_nested_bar_chart(results, output_dir="final_plots"):
     )
     ax.set_xticks(x)
     ax.set_xticklabels(display_names, rotation=0, ha="center")
-    
+
     # Create custom legend with explanation
-    from matplotlib.patches import Patch
     from matplotlib.lines import Line2D
-    
+    from matplotlib.patches import Patch
+
     # Create custom legend handles that look like vertical bars (patches)
     legend_elements = [
-        Patch(facecolor='none', edgecolor=edge_color, linewidth=2, label='Right Function Identification Rate'),
-        Patch(facecolor=fill_color, alpha=0.7, label='Overall Success Rate'),
-        Line2D([0], [0], color='none', label=r"Values above bars: P(success $|$ right function found)")
+        Patch(
+            facecolor="none",
+            edgecolor=edge_color,
+            linewidth=2,
+            label="Right Function Identification Rate",
+        ),
+        Patch(facecolor=fill_color, alpha=0.7, label="Overall Success Rate"),
+        Line2D(
+            [0],
+            [0],
+            color="none",
+            label=r"Values above bars: P(success $|$ right function found)",
+        ),
     ]
-    ax.legend(handles=legend_elements, loc='upper right', framealpha=0.9)
+    ax.legend(handles=legend_elements, loc="upper right", framealpha=0.9)
 
     # Add the conditional probability as text vertically above each bar
     for i, (rf_rate, cond_prob) in enumerate(
@@ -297,7 +308,7 @@ def plot_nested_bar_chart(results, output_dir="final_plots"):
                 fontweight="bold",
                 color="black",
             )
-    
+
     # Customize y-axis to show percentages - set after adding text to ensure proper limits
     ax.set_ylim(0, 70)  # Set fixed limit to ensure text is visible
     ax.yaxis.set_ticks(range(0, 71, 10))

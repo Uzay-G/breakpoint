@@ -1,22 +1,23 @@
-import os
 import ast
+import asyncio
+import io
 import json
+import logging
+import os
 import re
 import shutil
-import io
+import subprocess
+import tempfile
+import textwrap
 import tokenize
 import warnings
-import logging
-from typing import Dict, List, Tuple, Set, Optional, Any
 from collections import deque
-import asyncio
-import tempfile
-from radon.complexity import cc_visit
-from radon.metrics import h_visit, mi_visit
-import subprocess
-import textwrap
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 import code2flow
 import numpy as np
+from radon.complexity import cc_visit
+from radon.metrics import h_visit
 
 
 def unindent_code(source_code):
@@ -492,7 +493,7 @@ def remove_functions_in_file(file_path: str, function_to_remove: str) -> dict:
 
     # Modify the definition end line to include a "pass".
     # We preserve any trailing comment if present.
-    target_line = lines[def_end - 1].rstrip()
+    lines[def_end - 1].rstrip()
     new_indent = " " * (info["indent"] + 4)
     pass_line = f"{new_indent}pass\n"
 
@@ -548,7 +549,7 @@ def parse_pytest_json_report(
 
                     if failed <= detailed_failures:
                         test_name = entry["nodeid"]
-                        failure_detail = f"\n{'='*60}\n"
+                        failure_detail = f"\n{'=' * 60}\n"
                         failure_detail += f"Failure #{failed}: {test_name}\n"
 
                         parts = entry["nodeid"].split("::")
@@ -709,7 +710,6 @@ def get_venv_env(venv_dir):
 
 
 def setup_repo_env(repo_dir):
-
     venv_dir = os.path.join(repo_dir, "venv")
     if not os.path.exists(venv_dir):
         print(f"Creating virtual environment in {venv_dir}...")
@@ -728,7 +728,7 @@ def setup_repo_env(repo_dir):
     dev_req = os.path.join(repo_dir, "requirements-dev.txt")
     dev_req2 = os.path.join(repo_dir, "requirements/requirements_dev.txt")
     if os.path.exists(requirements_path):
-        print(f"Installing dependencies from requirements.txt...")
+        print("Installing dependencies from requirements.txt...")
         try:
             subprocess.run(
                 ["pip3", "install", "-r", requirements_path], check=True, env=venv_env
@@ -752,7 +752,9 @@ def setup_repo_env(repo_dir):
         pass
 
     try:
-        subprocess.run(["pip", "install", "pytest", "pytest-reportlog"], check=True, env=venv_env)
+        subprocess.run(
+            ["pip", "install", "pytest", "pytest-reportlog"], check=True, env=venv_env
+        )
     except subprocess.CalledProcessError as e:
         print(f"Error installing pytest for {e}")
         return False
@@ -798,22 +800,24 @@ def prepare_directory(repo):
             if clone_result.returncode != 0:
                 error_msg = clone_result.stderr.decode("utf-8")
                 raise Exception("Failed to clone repository: " + error_msg)
-            
+
             # If a specific commit is provided, check it out
             if hasattr(repo, "commit") and repo.commit:
                 checkout_command = ["git", "checkout", repo.commit]
                 checkout_result = subprocess.run(
-                    checkout_command, 
+                    checkout_command,
                     cwd=candidate_path,
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.PIPE
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
                 if checkout_result.returncode != 0:
                     error_msg = checkout_result.stderr.decode("utf-8")
-                    logging.warning(f"Failed to checkout commit {repo.commit}: {error_msg}")
+                    logging.warning(
+                        f"Failed to checkout commit {repo.commit}: {error_msg}"
+                    )
                 else:
                     logging.info(f"Successfully checked out commit {repo.commit}")
-            
+
             setup_repo_env(candidate_path)
             original_path = candidate_path
         else:
@@ -850,7 +854,8 @@ async def run_tests(repo_dir: str, test_command: str = "pytest", log_id: str = "
 
     try:
         stdout, stderr = await asyncio.wait_for(
-            process.communicate(), timeout=240  # 60 second timeout
+            process.communicate(),
+            timeout=240,  # 60 second timeout
         )
     except asyncio.TimeoutError:
         try:
@@ -1455,7 +1460,7 @@ def get_repo_info(code_path: str) -> Dict[str, float]:
 
     except Exception as exc:  # noqa: BLE001
         logging.exception("Error analysing repo at %s: %s", code_path, exc)
-        print(e)
+        print(exc)
         info["error"] = str(exc)
 
     return info

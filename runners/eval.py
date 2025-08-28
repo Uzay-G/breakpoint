@@ -1,17 +1,16 @@
-import asyncio
-import logging
-import json
-import datetime
-
-from lib.agents import CodeAgent
-from lib.problem_generator import Problem, load_problems_from_json
-from lib.code_benchmark import CorruptionBenchmark
-
-from typing import List
-from dataclasses import dataclass
 import argparse
-from pathlib import Path
+import asyncio
+import datetime
+import json
+import logging
 import random
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List
+
+from breakpoint_eval.agents import CodeAgent
+from breakpoint_eval.code_benchmark import CorruptionBenchmark
+from breakpoint_eval.problem_generator import Problem, load_problems_from_json
 
 
 def dump_results(results, output_path, config):
@@ -140,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         type=str,
-        default=f"results/gpt-nano-budget_10_test_budget_3_debug.jsonl",
+        default="results/gpt-nano-budget_10_test_budget_3_debug.jsonl",
         help="Output file for results",
     )
     parser.add_argument(

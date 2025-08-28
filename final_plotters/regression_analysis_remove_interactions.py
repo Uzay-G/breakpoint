@@ -1,19 +1,15 @@
 """
 Regression analysis to predict model success based on code complexity metrics with interaction terms.
 
-This script fits logistic regression models to predict whether a model will 
-successfully solve a problem in REMOVE mode, comparing models with and without 
+This script fits logistic regression models to predict whether a model will
+successfully solve a problem in REMOVE mode, comparing models with and without
 interaction terms and evaluating them using BIC.
 """
 
 import json
-import numpy as np
+
 import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LogisticRegression
 import statsmodels.api as sm
-import statsmodels.formula.api as smf
-from scipy import stats
 
 
 def load_data(filepath):
@@ -167,11 +163,14 @@ def fit_models_with_and_without_interactions(df):
             print("Parameters:")
             for param, value in model_data["params"].items():
                 p_value = model_data["pvalues"][param]
-                star = "*" if p_value < 0.05 else " "
                 stars = (
                     "***"
                     if p_value < 0.001
-                    else "**" if p_value < 0.01 else "*" if p_value < 0.05 else ""
+                    else "**"
+                    if p_value < 0.01
+                    else "*"
+                    if p_value < 0.05
+                    else ""
                 )
                 print(f"  {param}: {value:.4f} (p={p_value:.4f}) {stars}")
 

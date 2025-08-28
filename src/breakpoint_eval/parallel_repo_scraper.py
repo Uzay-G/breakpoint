@@ -1,13 +1,15 @@
-import requests
-import os
-import time
-import subprocess
-import json
 import concurrent.futures
-import threading
-import dotenv
-from lib.codeparsing_utils import get_venv_env, setup_repo_env
+import json
+import os
+import subprocess
 import sys
+import threading
+import time
+
+import dotenv
+import requests
+
+from breakpoint_eval.codeparsing_utils import setup_repo_env
 
 # --------------------------
 # CONFIGURATION CONSTANTS
@@ -86,10 +88,10 @@ def clone_and_setup_repo(repo):
     Returns True if all steps succeed and the test duration is acceptable;
     otherwise, returns False.
     """
-    owner = repo["owner"]["login"]
+    repo["owner"]["login"]
     repo_name = repo["name"]
     clone_url = repo["clone_url"]
-    full_name = repo["full_name"]
+    repo["full_name"]
 
     base_dir = os.path.expanduser(repos_dir)
     repo_dir = os.path.join(base_dir, repo_name)

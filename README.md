@@ -22,13 +22,12 @@ cd breakpoint
 Install dependencies:
 
 ```sh
-pip install -r requirements.txt
+uv sync
 ```
 
 Below we explain how to use Breakpoint to generate and test models. If you don't want to generate your own problems, you can simply download our data files from [here](https://huggingface.co/datasets/uzpg/breakpoint/tree/main/data).
 
 ## Generating Custom SWE Problems
-
 
 There are 2 corruption modes to create Breakpoint problems. In `remove` mode we simply delete function bodies from the code, which the model then has to infer to solve the task.
 
@@ -36,7 +35,7 @@ In `discovery` mode we introduce a more subtle corruption of the code that is ge
 
 You can generate both of these Breakpoint task modes on arbitrary code, if it's a Python repository with pytest testing.
 
-The central data generation script is run with `python3 -m lib.problem_generator --dump_file <path> <command> options/arguments`
+The central data generation script is run with `python3 -m breakpoint_eval.problem_generator --dump_file <path> <command> options/arguments`
 
 ### Process repository for candidate functions
 
@@ -45,11 +44,11 @@ First Breakpoint processes your code to find suitable functions to corrupt.
 For example:
 
 ```
-python3 -m lib.problem_generator --dump_file archivy_problems.json cache --num_workers 20  --num_functions 15 --code_path archivy --repo_path ~/repos/archivy
+python3 -m breakpoint_eval.problem_generator --dump_file archivy_problems.json cache --num_workers 20  --num_functions 15 --code_path archivy --repo_path ~/repos/archivy
 ```
 
 This would source 15 functions from the Archivy repository stored locally. The `code_path` points to the location of the source code within the repository. This generates a list of functions that were deemed good as corruptions. 
-See `python3 -m lib.problem_generator cacheall --help` for options on sourcing from a whole directory of codebases.
+See `python3 -m breakpoint_eval.problem_generator cacheall --help` for options on sourcing from a whole directory of codebases.
 
 ### Generating Corruptions
 
@@ -58,13 +57,55 @@ You can directly use the file from the last step to run `remove` mode evaluation
 The command to source language model generated corruptions is the following:
 
 ```
-python3 -m lib.problem_generator --dump_file corruptions.json corruptall --cache_path <file from previous step> --num_corruptions NUM_CORRUPTIONS --model MODEL --num_workers NUM_WORKERS
+python3 -m breakpoint_eval.problem_generator --dump_file corruptions.json corruptall --cache_path <file from previous step> --num_corruptions NUM_CORRUPTIONS --model MODEL --num_workers NUM_WORKERS
 ```
 
 This will save language model corruptions in `corruptions.json`.
 
+## Running Evaluations (inspect)
+Breakpoint has some support for running evaluations using (inspect)[https://github.com/UKGovernmentBEIS/inspect_ai/]. Currently, there is support for the single function remove and single function discovery modes.
 
-## Running Evaluations
+Before any of the commands below, you should activate the uv virtual environment using a command like `. .venv/bin/activate`.
+
+To run breakpoint using inspect you first need to build docker images for the breakpoint test cases:
+```bash
+# Build docker images for the single_fn_remove task.
+python -m breakpoint_eval.inspect.docker.build_images --task single_fn_remove
+
+# Build docker images for the single_fn_discovery task.
+python -m breakpoint_eval.inspect.docker.build_images --task single_fn_discovery
+
+# Get more info on how the build_images script works
+python -m breakpoint_eval.inspect.docker.build_images --help
+```
+
+Then, you can run the reference solutions to check that the images were built correctly and run correctly. The reference solutions check that it is possible to apply a diff to the repo to make all tests pass.
+```bash
+# Check images for the single_fn_remove task
+python -m breakpoint_eval.inspect.docker.check_images --task single_fn_remove
+
+# Check images for the single_fn_discovery task
+python -m breakpoint_eval.inspect.docker.check_images --task single_fn_discovery
+
+# Get more info on how check_images script works
+python -m breakpoint_eval.inspect.docker.check_images --help
+```
+
+Finally, you can run an evaluation like this:
+```bash
+# The following commands give a demo of what the full eval looks like.
+# You will need to add an API key to .env to run these commands.
+
+# Run the single_fn_remove task
+inspect eval src/breakpoint_eval/inspect/single_fn_remove/task.py@single_fn_remove \
+  --model openai/gpt-4.1-2025-04-14 --limit 3 --message-limit 15
+
+# Run the single_fn_discovery task
+inspect eval src/breakpoint_eval/inspect/single_fn_discovery/task.py@single_fn_discovery \
+  --model openai/gpt-4.1-2025-04-14 --limit 3 --message-limit 15
+```
+
+## Running Evaluations (eval.py)
 
 Evaluate your model on Breakpoint using the `runners/eval.py` script. Run the command as `python3 -m runners.eval --option1 <option val>` etc...
 

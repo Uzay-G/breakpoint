@@ -31,7 +31,7 @@ import scienceplots  # noqa: F401 – needed for plt.style.use
 # ——————————————————————  styling  ——————————————————————
 # Use science plots style with solarize color scheme and white backgrounds
 try:
-    import scienceplots
+    import scienceplots  # noqa: F401
 
     plt.style.use(["science", "grid"])
     # Apply solarize color scheme with white background
@@ -54,12 +54,12 @@ try:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 except ImportError:
@@ -85,12 +85,12 @@ except ImportError:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 

@@ -1,21 +1,19 @@
 """
 Calculate implicit pass@1 for models with multiple iterations.
 
-This script analyzes consolidated result files to calculate what would be the pass@1 
-score for models that had multiple iterations available - essentially analyzing 
+This script analyzes consolidated result files to calculate what would be the pass@1
+score for models that had multiple iterations available - essentially analyzing
 only their first attempt at each problem.
 """
 
 import json
 import os
-import sys
-import argparse
+import re
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from collections import defaultdict
-from pathlib import Path
-import re
 from scipy import stats as scipy_stats
 
 # Constants and paths
@@ -32,7 +30,7 @@ OUTPUT_DIR = BASE_DIR / "final_plots"
 
 # Set up the plotting style
 try:
-    import scienceplots
+    import scienceplots  # noqa: F401
 
     plt.style.use(["science", "grid"])
     # Apply solarize color scheme with white background
@@ -55,12 +53,12 @@ try:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 22,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 22,
         }
     )
 except ImportError:
@@ -84,12 +82,12 @@ except ImportError:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 22,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 22,
         }
     )
 
@@ -292,7 +290,7 @@ def plot_16iter_bar_chart(stats_df, output_path):
         )
         for model in models
     ]
-    discovery_ci_upper = [
+    [
         (
             discovery_data[discovery_data["model"] == model]["ci_upper"].values[0]
             if not discovery_data[discovery_data["model"] == model].empty
@@ -329,7 +327,7 @@ def plot_16iter_bar_chart(stats_df, output_path):
         )
         for model in models
     ]
-    remove_ci_upper = [
+    [
         (
             remove_data[remove_data["model"] == model]["ci_upper"].values[0]
             if not remove_data[remove_data["model"] == model].empty
@@ -524,9 +522,7 @@ def plot_iteration_scaling(stats_df, output_path):
     ax2.legend(loc="lower right")
 
     # Add a suptitle
-    plt.suptitle(
-        "First Attempt Success Rate by Model and Iteration Count", y=0.98
-    )
+    plt.suptitle("First Attempt Success Rate by Model and Iteration Count", y=0.98)
 
     # Adjust layout
     plt.tight_layout()

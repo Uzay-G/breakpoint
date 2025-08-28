@@ -1,9 +1,9 @@
-import os
 import json
-import re
-from typing import Dict, List, Any, Optional, Set, Tuple
-from pathlib import Path
 import logging
+import os
+import re
+from pathlib import Path
+from typing import Dict, List, Optional
 
 # Set up logging
 logging.basicConfig(
@@ -484,7 +484,7 @@ def extract_model_performance() -> Dict[str, Dict]:
     )
     logger.info("Sample original function IDs from performance data:")
     for i, id in enumerate(sample_original_ids):
-        logger.info(f"  {i+1}. {id}")
+        logger.info(f"  {i + 1}. {id}")
 
     return function_performance
 
@@ -561,11 +561,11 @@ def merge_data(
     # Debug: print sample of function IDs from both dictionaries
     logger.info("Sample metadata function IDs:")
     for i, id in enumerate(list(function_metadata.keys())[:5]):
-        logger.info(f"  {i+1}. {id}")
+        logger.info(f"  {i + 1}. {id}")
 
     logger.info("Sample performance function IDs:")
     for i, id in enumerate(list(function_performance.keys())[:5]):
-        logger.info(f"  {i+1}. {id}")
+        logger.info(f"  {i + 1}. {id}")
 
     # Create a simple function name to full ID mapping
     function_name_to_metadata_id = {}
@@ -607,7 +607,6 @@ def merge_data(
         # Get performance data for this function if it exists
         if perf_id:
             performance = function_performance[perf_id]
-            has_performance = True
             model_performance_count += 1
             if model_performance_count <= 5:
                 logger.info(
@@ -615,7 +614,6 @@ def merge_data(
                 )
         else:
             performance = {"function_id": function_id, "model_performance": {}}
-            has_performance = False
 
         # Create merged entry
         merged_entry = {

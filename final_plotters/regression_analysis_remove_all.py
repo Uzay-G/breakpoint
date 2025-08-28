@@ -1,21 +1,17 @@
 """
 Regression analysis to predict model success based on code complexity metrics.
 
-This script fits a logistic regression model to predict whether a model will 
+This script fits a logistic regression model to predict whether a model will
 successfully solve a problem in REMOVE mode based on code line count and harmonic centrality metrics,
 while accounting for the model's average performance.
 """
 
 import json
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
 import statsmodels.api as sm
-import statsmodels.formula.api as smf
-from scipy import stats
-import scienceplots
 
 # Try to use scienceplots style if available
 
@@ -40,12 +36,12 @@ plt.rcParams.update(
                 "#cb4b16",
             ],
         ),
-        'font.size': 18,
-        'axes.titlesize': 22,
-        'axes.labelsize': 20,
-        'xtick.labelsize': 16,
-        'ytick.labelsize': 16,
-        'legend.fontsize': 16,
+        "font.size": 18,
+        "axes.titlesize": 22,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 16,
+        "ytick.labelsize": 16,
+        "legend.fontsize": 16,
     }
 )
 
@@ -218,7 +214,6 @@ def plot_success_probability_by_complexity(result, df, output_path=None):
     failure_data = df[df["success"] == 0]
 
     # Create hexbin plot for success rates
-    from matplotlib.colors import LinearSegmentedColormap
 
     # Create a hexbin plot showing success rates in each bin
     # First, combine all data points and add a success column
@@ -255,16 +250,12 @@ def plot_success_probability_by_complexity(result, df, output_path=None):
     )
 
     # Add a colorbar for success rate
-    cbar_hex = plt.colorbar(hexbin, ax=ax, label="Success Rate", orientation="vertical")
+    plt.colorbar(hexbin, ax=ax, label="Success Rate", orientation="vertical")
 
     # Add handles for legend
     legend_handles = [
-        plt.Line2D(
-            [0], [0], color="black", linestyle=":", label="5%"
-        ),
-        plt.Line2D(
-            [0], [0], color="black", linestyle="--", label="25%"
-        ),
+        plt.Line2D([0], [0], color="black", linestyle=":", label="5%"),
+        plt.Line2D([0], [0], color="black", linestyle="--", label="25%"),
         plt.Line2D(
             [0],
             [0],
@@ -273,20 +264,14 @@ def plot_success_probability_by_complexity(result, df, output_path=None):
             linewidth=2,
             label="50%",
         ),
-        plt.Line2D(
-            [0], [0], color="black", linestyle="--", label="75%"
-        ),
-        plt.Line2D(
-            [0], [0], color="black", linestyle=":", label="95%"
-        ),
+        plt.Line2D([0], [0], color="black", linestyle="--", label="75%"),
+        plt.Line2D([0], [0], color="black", linestyle=":", label="95%"),
     ]
 
     # Add axis labels and title
     ax.set_xlabel("Code Line Count (z-score)")
     ax.set_ylabel("Harmonic Centrality (z-score)")
     ax.set_title("Success Probability by Code Complexity (Remove)")
-
-
 
     # Add model information
     model_info = f"Average model performance: {avg_perf:.2f}"
@@ -304,7 +289,12 @@ def plot_success_probability_by_complexity(result, df, output_path=None):
     # We already have a colorbar for the hexbin, so we don't need another one for the contour
 
     # Add legend with the contour line explanations
-    ax.legend(handles=legend_handles, loc="upper right", title="Predicted Success Rate", title_fontsize=14)
+    ax.legend(
+        handles=legend_handles,
+        loc="upper right",
+        title="Predicted Success Rate",
+        title_fontsize=14,
+    )
 
     # Save the figure if output_path is provided
     if output_path:
