@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-import subprocess
-import os
-import asyncio
 import argparse
+import asyncio
+import os
 from datetime import datetime
 
 # Configuration
@@ -74,8 +73,6 @@ async def main():
         "--long", action="store_true", help="Run a test with only 1 problem"
     )
     args = parser.parse_args()
-
-    n_problems = -1  # Default is already 1 problem per model
 
     print("Starting experiment series...")
 

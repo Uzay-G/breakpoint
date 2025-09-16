@@ -1,0 +1,27 @@
+name: Format and Lint
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ruff (uses version in pyproject.toml) without running check or format
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "--version"
+
+      - name: Ruff format
+        run: ruff format --check
+
+      - name: Ruff lint
+        run: ruff check

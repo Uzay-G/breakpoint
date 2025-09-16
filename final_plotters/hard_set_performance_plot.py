@@ -15,12 +15,12 @@ The script analyzes consolidated data from:
 """
 
 import json
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from pathlib import Path
-import seaborn as sns
 import math
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # Configure paths
 BASE_DIR = Path("/home/ubuntu/breakpoint")
@@ -45,7 +45,7 @@ MODEL_DISPLAY = {
 
 # Use science plots style with solarize color scheme and white backgrounds
 try:
-    import scienceplots
+    import scienceplots  # noqa: F401
 
     plt.style.use(["science", "grid"])
     # Apply solarize color scheme with white background
@@ -68,12 +68,12 @@ try:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 22,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 22,
         }
     )
 except ImportError:
@@ -99,12 +99,12 @@ except ImportError:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 22,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 22,
         }
     )
 
@@ -190,7 +190,7 @@ def identify_hard_set(df, percentile=85):
         f"Harmonic Centrality threshold ({percentile}th percentile): {harmonic_threshold:.2f}"
     )
     print(
-        f"Hard set size: {len(hard_set)} functions ({len(hard_set)/len(df)*100:.2f}% of total)"
+        f"Hard set size: {len(hard_set)} functions ({len(hard_set) / len(df) * 100:.2f}% of total)"
     )
 
     return hard_set, log_line_count_threshold, harmonic_threshold

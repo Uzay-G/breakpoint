@@ -1,22 +1,23 @@
-import os
 import ast
+import asyncio
+import io
 import json
+import logging
+import os
 import re
 import shutil
-import io
+import subprocess
+import tempfile
+import textwrap
 import tokenize
 import warnings
-import logging
-from typing import Dict, List, Tuple, Set, Optional, Any
 from collections import deque
-import asyncio
-import tempfile
-from radon.complexity import cc_visit
-from radon.metrics import h_visit
-import subprocess
-import textwrap
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 import code2flow
 import numpy as np
+from radon.complexity import cc_visit
+from radon.metrics import h_visit
 
 
 def unindent_code(source_code):
@@ -74,7 +75,7 @@ def get_current_commit(repo_dir: str) -> Optional[str]:
             cwd=repo_dir,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         commit = commit_result.stdout.strip()
         logging.info(f"Got commit hash: {commit}")
@@ -567,7 +568,7 @@ def remove_functions_in_file(file_path: str, function_to_remove: str) -> dict:
 
     # Modify the definition end line to include a "pass".
     # We preserve any trailing comment if present.
-    target_line = lines[def_end - 1].rstrip()
+    lines[def_end - 1].rstrip()
     new_indent = " " * (info["indent"] + 4)
     pass_line = f"{new_indent}pass\n"
 
@@ -623,7 +624,7 @@ def parse_pytest_json_report(
 
                     if failed <= detailed_failures:
                         test_name = entry["nodeid"]
-                        failure_detail = f"\n{'='*60}\n"
+                        failure_detail = f"\n{'=' * 60}\n"
                         failure_detail += f"Failure #{failed}: {test_name}\n"
 
                         parts = entry["nodeid"].split("::")
@@ -798,7 +799,6 @@ def get_venv_env(venv_dir):
 
 
 def setup_repo_env(repo_dir):
-
     venv_dir = os.path.join(repo_dir, "venv")
 
     if not os.path.exists(venv_dir):
@@ -889,22 +889,24 @@ def prepare_directory(repo):
             if clone_result.returncode != 0:
                 error_msg = clone_result.stderr.decode("utf-8")
                 raise Exception("Failed to clone repository: " + error_msg)
-            
+
             # If a specific commit is provided, check it out
             if hasattr(repo, "commit") and repo.commit:
                 checkout_command = ["git", "checkout", repo.commit]
                 checkout_result = subprocess.run(
-                    checkout_command, 
+                    checkout_command,
                     cwd=candidate_path,
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.PIPE
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
                 if checkout_result.returncode != 0:
                     error_msg = checkout_result.stderr.decode("utf-8")
-                    logging.warning(f"Failed to checkout commit {repo.commit}: {error_msg}")
+                    logging.warning(
+                        f"Failed to checkout commit {repo.commit}: {error_msg}"
+                    )
                 else:
                     logging.info(f"Successfully checked out commit {repo.commit}")
-            
+
             setup_repo_env(candidate_path)
             original_path = candidate_path
         else:
@@ -942,7 +944,8 @@ async def run_tests(repo_dir: str, test_command: str = "pytest", log_id: str = "
 
     try:
         stdout, stderr = await asyncio.wait_for(
-            process.communicate(), timeout=240  # 60 second timeout
+            process.communicate(),
+            timeout=240,  # 60 second timeout
         )
     except asyncio.TimeoutError:
         try:

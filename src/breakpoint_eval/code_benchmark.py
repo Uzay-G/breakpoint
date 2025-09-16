@@ -1,16 +1,24 @@
-import time
 import asyncio
-import threading
 import json
-from typing import Optional
-
-from lib.codeparsing_utils import *
-from lib.agents import *
-from lib.problem_generator import Problem, ProblemEnv
+import logging
+import os
 import shutil
 import sys
-import datetime
 import os
+from typing import List, Set, Tuple
+
+from breakpoint_eval.agents import StudentAttempt, Agent
+from breakpoint_eval.codeparsing_utils import (
+    build_function_graph,
+    get_source_code_from_name,
+    insert_function_code,
+    prepare_directory,
+    remove_functions_in_file,
+    run_tests,
+)
+from breakpoint_eval.problem_generator import Problem, ProblemEnv
+
+logger = logging.getLogger(__name__)
 
 
 class CorruptionBenchmark:
@@ -33,7 +41,7 @@ class CorruptionBenchmark:
 
         # For discovery mode, don't reveal which function has the issue
         if mode == "discovery":
-            instructions = f"""# Human Evaluation Task - Discovery Mode
+            instructions = """# Human Evaluation Task - Discovery Mode
 
 You are an expert Python programmer tasked with diagnosing and fixing an issue in a codebase.
 
@@ -333,9 +341,8 @@ After you've fixed the code, please record your solution and process for compari
         grouped_problems = []
 
         for repo_path, repo_problems in problems_by_repo.items():
-            
             if not os.path.exists(repo_path):
-              repo_path = prepare_directory(repos[repo_path])
+                repo_path = prepare_directory(repos[repo_path])
             
             try:
                 if correlated_corruptions:
@@ -458,13 +465,14 @@ After you've fixed the code, please record your solution and process for compari
         async with self.semaphore:
             base_problem = problem_group[0]
             try:
-              worker_dir = self.prepare_env_for_problem(base_problem, mode)
+                worker_dir = self.prepare_env_for_problem(base_problem, mode)
 
-              for problem in problem_group[1:]:
-                  self._apply_additional_corruption(worker_dir, problem, mode)
-            
+                for problem in problem_group[1:]:
+                    self._apply_additional_corruption(worker_dir, problem, mode)
             except Exception as e:
-              print(f"Error preparing environment for {base_problem.function_name}: {e}")
+                print(
+                    f"Error preparing environment for {base_problem.function_name}: {e}"
+                )
 
             # Update base_problem to reflect the combined corruption
             if is_multi:
@@ -554,7 +562,9 @@ After you've fixed the code, please record your solution and process for compari
                 submit_calls = [
                     (x["args"]["file_path"], x["args"]["func_name"])
                     for x in attempt.metadata["tool_usage"]
-                    if x["tool"] == "replace_function" and "file_path" in x["args"] and "func_name" in x["args"]
+                    if x["tool"] == "replace_function"
+                    and "file_path" in x["args"]
+                    and "func_name" in x["args"]
                 ]
                 right_function = True
                 for p in problem_group:

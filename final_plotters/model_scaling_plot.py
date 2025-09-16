@@ -1,17 +1,17 @@
 """
 Plot model scaling results across iterations for o4-mini and gpt-4o.
 
-This script creates a publication-quality plot showing performance scaling 
+This script creates a publication-quality plot showing performance scaling
 with iteration count (4, 8, 16) for both remove and discovery modes.
 """
 
 import json
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from pathlib import Path
 import os
 import re
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pandas as pd
 from scipy import stats as scipy_stats
 
 # Constants and settings
@@ -32,7 +32,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Set up the plotting style
 try:
-    import scienceplots
+    import scienceplots  # noqa: F401
 
     plt.style.use(["science", "grid"])
     # Apply solarize color scheme with white background
@@ -55,12 +55,12 @@ try:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 except ImportError:
@@ -86,12 +86,12 @@ except ImportError:
                     "#cb4b16",
                 ],
             ),
-            'font.size': 26,
-            'axes.titlesize': 36,
-            'axes.labelsize': 34,
-            'xtick.labelsize': 30,
-            'ytick.labelsize': 30,
-            'legend.fontsize': 30,
+            "font.size": 26,
+            "axes.titlesize": 36,
+            "axes.labelsize": 34,
+            "xtick.labelsize": 30,
+            "ytick.labelsize": 30,
+            "legend.fontsize": 30,
         }
     )
 

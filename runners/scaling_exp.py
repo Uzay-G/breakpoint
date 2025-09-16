@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-import subprocess
-import os
-import asyncio
 import argparse
+import asyncio
+import os
 from datetime import datetime
 
 # Configuration

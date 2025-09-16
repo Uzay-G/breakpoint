@@ -1,45 +1,28 @@
-import asyncio
-import os
-import random
-import pickle
-import logging
 import argparse
-import json
+import asyncio
 import datetime
+import json
+import logging
+import os
+from pathlib import Path
+import pickle
+import random
 import shutil
-from pydantic import BaseModel
 from tqdm import tqdm
+from typing import Optional
 
-from lib.codeparsing_utils import *
-from lib.agents import *
-
-
-class Repo(BaseModel):
-    path: str
-    code_path: str
-    name: Optional[str] = ""
-    test_command: Optional[str] = "source venv/bin/activate && ./venv/bin/pytest"
-    url: Optional[str] = ""
-    commit: Optional[str] = None
-    stats: Optional[Dict] = None
-
-
-class Problem(BaseModel):
-    repo: Repo
-    fpath: str
-    function_name: str
-    test_info: Optional[Dict] = None
-    complexity_info: Optional[Dict] = None
-    corruption: Optional[Dict] = None
-
-
-class MultiProblem(BaseModel):
-    problems: List[Problem]
-
-
-class ProblemEnv(BaseModel):
-    problem: Problem
-    execution_dir: str
+from breakpoint_eval.agents import CodeAgent
+from breakpoint_eval.codeparsing_utils import (
+    build_function_graph,
+    extract_function_info,
+    get_current_commit,
+    get_origin_url,
+    get_repo_info,
+    parse_repo_for_functions,
+    prepare_directory,
+    test_without_function,
+)
+from breakpoint_eval.problem import Problem, ProblemEnv, Repo
 
 
 class CodebaseCache:
@@ -311,14 +294,14 @@ class SubtleInverseGenerator:
 
         # Create tasks for all function inversions
         logging.info(
-            f"\n{'='*80}\nStarting corruption generation for {self.num_corruptions} functions\n{'='*80}"
+            f"\n{'=' * 80}\nStarting corruption generation for {self.num_corruptions} functions\n{'=' * 80}"
         )
         tasks = [self._generate(problem) for problem in selected_problems]
 
         results = await asyncio.gather(*tasks)
         results = [x for x in results if x]
 
-        logging.info(f"\n{'='*80}\nCORRUPTION GENERATION SUMMARY\n{'='*80}")
+        logging.info(f"\n{'=' * 80}\nCORRUPTION GENERATION SUMMARY\n{'=' * 80}")
 
         avg_score = (
             sum(res.corruption["score"] for res in results) / len(results)
@@ -345,7 +328,6 @@ class SubtleInverseGenerator:
         """
         # Prepare working directory (helper assumed)
         async with self.semaphore:
-
             worker_dir = prepare_directory(problem.repo)
             if not worker_dir:
                 return False
@@ -368,7 +350,7 @@ class SubtleInverseGenerator:
             test_examples = ""
             failed_tests = problem.test_info["failed_tests"]
 
-            if len(failed_tests) == 0 or not "failures_info" in problem.test_info:
+            if len(failed_tests) == 0 or "failures_info" not in problem.test_info:
                 return False
 
             for test_file, test_function in failed_tests[:5]:
@@ -507,7 +489,7 @@ if __name__ == "__main__":
         filename=log_filename,
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
-        filemode="w", 
+        filemode="w",
     )
 
     parser = argparse.ArgumentParser(
@@ -672,7 +654,7 @@ if __name__ == "__main__":
                 logging.info("=" * 100)
 
                 for i, corruption in enumerate(dataset):
-                    logging.info(f"\n\nCORRUPTION #{i+1}:")
+                    logging.info(f"\n\nCORRUPTION #{i + 1}:")
                     logging.info(f"File: {corruption['file_path']}")
                     logging.info(f"Function: {corruption['fn']}")
                     logging.info(
@@ -690,7 +672,6 @@ if __name__ == "__main__":
                     json.dumps(dataset, f)
 
         elif args.command == "cache":
-
             repo_name = Path(args.repo_path).name
             repo = Repo(path=args.repo_path, code_path=args.code_path, name=repo_name)
             repo.url = get_origin_url(args.repo_path)
@@ -709,7 +690,6 @@ if __name__ == "__main__":
             logging.info(f"Dumped instance state to {args.dump_file}")
 
         elif args.command == "cacheall":
-
             problems = []
             if os.path.exists(args.output_json):
                 problems = json.load(open(args.output_json, "r"))
@@ -735,7 +715,7 @@ if __name__ == "__main__":
                     repo_path += "/"
 
                 logging.info(
-                    f"\n{'='*80}\nProcessing repository: {repo_name}\n{'='*80}"
+                    f"\n{'=' * 80}\nProcessing repository: {repo_name}\n{'=' * 80}"
                 )
 
                 setup_repo_env(repo_path)
@@ -785,7 +765,7 @@ if __name__ == "__main__":
 
                     logging.info(f"Test-based selection succeeded for {repo_name}.")
 
-                except Exception as e:
+                except Exception:
                     logging.info(f"Error creating codebase cache for {repo_name}")
 
                 # Write the combined data to a JSON file
@@ -793,7 +773,7 @@ if __name__ == "__main__":
                     json.dump(problems, f, indent=2)
 
             # Log summary
-            logging.info(f"\n{'='*80}\nSUMMARY\n{'='*80}")
+            logging.info(f"\n{'=' * 80}\nSUMMARY\n{'=' * 80}")
             logging.info(f"Processed {len(repo_dirs)} repositories.")
             logging.info(f"Combined data written to {args.output_json}")
 
