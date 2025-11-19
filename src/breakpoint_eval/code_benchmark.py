@@ -4,8 +4,10 @@ import logging
 import os
 import shutil
 import sys
+import os
+from typing import List, Set, Tuple
 
-from breakpoint_eval.agents import StudentAttempt
+from breakpoint_eval.agents import StudentAttempt, Agent
 from breakpoint_eval.codeparsing_utils import (
     build_function_graph,
     get_source_code_from_name,
@@ -145,6 +147,7 @@ After you've fixed the code, please record your solution and process for compari
         multi=1,
         test_command="source venv/bin/activate && ./venv/bin/pytest",
         num_workers=8,
+        correlated_corruptions=False,
     ):
         self.problems = problems
         self.total_problems = len(problems)
@@ -155,6 +158,7 @@ After you've fixed the code, please record your solution and process for compari
         self.semaphore = asyncio.Semaphore(num_workers)
         self.test_command = test_command
         self.multi = multi
+        self.correlated_corruptions = correlated_corruptions
 
     def __len__(self):
         """Return the number of problems in the benchmark."""
@@ -210,21 +214,10 @@ After you've fixed the code, please record your solution and process for compari
         Returns:
             The path to the working directory for this problem
         """
-        import os
-
         # Create a temporary working directory
         worker_dir = prepare_directory(problem.repo)
-        abs_path = os.path.join(worker_dir, problem.fpath)
-        removal_info = remove_functions_in_file(abs_path, problem.function_name)
 
-        if mode != "remove":
-            insert_function_code(
-                problem.corruption["code"],
-                removal_info["func_start"],
-                removal_info["func_def_end"],
-                removal_info["indent"],
-                abs_path,
-            )
+        self._apply_additional_corruption(worker_dir, problem, mode)
 
         return worker_dir
 
@@ -240,109 +233,17 @@ After you've fixed the code, please record your solution and process for compari
             return score
 
     async def eval_problem(self, problem, agent, mode):
-        async with self.semaphore:
-            # Acquire a worker directory from the queue.
 
-            worker_dir = self.prepare_env_for_problem(problem, mode)
-            attempt = None
+        problem_id = f"{problem.function_name}_{agent.model_interface.model_name}_{agent.repair_mode}_{agent.max_iterations}_{self.multi}_{agent.test_budget}"
 
-            if agent.model_interface.model_name == "human":
-                # Create a README file for human evaluators with our factored-out function
-                # Pass the current mode to the instructions generator
-                instructions = self.get_human_eval_instructions(
-                    problem, agent, worker_dir, mode=mode
-                )
+        # Create a directory for storing problem data if it doesn't exist
+        temp_dir = os.path.join(os.getcwd(), "temp_problems")
+        os.makedirs(temp_dir, exist_ok=True)
 
-                # Write the instructions to a README.md file in the worker directory
-                readme_path = os.path.join(worker_dir, "HUMAN_EVAL_README.md")
-                with open(readme_path, "w") as readme_file:
-                    readme_file.write(instructions)
+        # Create a file path for the problem data
+        problem_file_path = os.path.join(temp_dir, f"{problem_id}.json")
 
-                print(f"Problem instance stored in {worker_dir}")
-                print(f"Human evaluation instructions provided in {readme_path}")
-                print(f"Mode: {mode}")
-                sys.exit(0)
-
-            # Offload the blocking agent call.
-            # Create a ProblemEnv object to pass to the agent
-
-            problem_id = f"{problem.function_name}_{agent.model_interface.model_name}_{agent.repair_mode}_{agent.max_iterations}_{self.multi}_{agent.test_budget}"
-
-            # Create a directory for storing problem data if it doesn't exist
-            temp_dir = os.path.join(os.getcwd(), "temp_problems")
-            os.makedirs(temp_dir, exist_ok=True)
-
-            # Create a file path for the problem data
-            problem_file_path = os.path.join(temp_dir, f"{problem_id}.json")
-
-            # Check if the file exists and load the attempt if it does
-            loaded = False
-
-            if os.path.exists(problem_file_path):
-                loaded = True
-                logging.info(f"Loading saved attempt from {problem_file_path}")
-                try:
-                    with open(problem_file_path, "r") as f:
-                        saved_data = json.load(f)
-                        attempt = StudentAttempt(
-                            problem_spec=saved_data["problem"],
-                            student_solution="",  # This field isn't saved in the file
-                            actual_solution="",
-                            score=saved_data["score"],
-                            metadata=saved_data["metadata"],
-                        )
-                        if saved_data["score"] is None:
-                            attempt.score = 0
-                            loaded = False
-
-                        tool_calls = [
-                            (x["args"]["file_path"], x["args"]["func_name"])
-                            for x in attempt.metadata["tool_usage"]
-                            if x["tool"] == "replace_function"
-                        ]
-
-                        right_function = tool_calls and tool_calls[-1] == (
-                            problem.fpath,
-                            problem.function_name,
-                        )
-                        attempt.metadata["right_function"] = right_function
-
-                except Exception as e:
-                    logger.info(
-                        f"Failed to load saved attempt: {e}. Rerunning problem."
-                    )
-                    loaded = False
-
-            if not loaded:
-                # If file doesn't exist, run the agent
-                problem_env = ProblemEnv(problem=problem, execution_dir=worker_dir)
-                attempt = await agent(problem_env)
-
-                tool_calls = [
-                    (x["args"]["file_path"], x["args"]["func_name"])
-                    for x in attempt.metadata["tool_usage"]
-                    if x["tool"] == "replace_function"
-                ]
-
-                right_function = tool_calls and tool_calls[-1] == (
-                    problem.fpath,
-                    problem.function_name,
-                )
-                attempt.metadata["right_function"] = right_function
-
-                result_data = {
-                    "problem": attempt.problem_spec,
-                    "score": attempt.score,
-                    "metadata": attempt.metadata,
-                }
-
-                # Save the problem data to the file
-                with open(problem_file_path, "w") as f:
-                    json.dump(result_data, f)
-
-            shutil.rmtree(worker_dir)
-
-            return attempt
+        return await self._eval_combined_problems([problem], agent, mode, problem_file_path)
 
     async def run_eval(self, agent, mode="remove"):
         """
@@ -358,7 +259,10 @@ After you've fixed the code, please record your solution and process for compari
         # Set up the semaphore to limit concurrency.
         if self.multi != 1:
             results = await self.run_eval_with_combined_corruptions(
-                agent, mode, corruptions_per_group=self.multi
+                agent,
+                mode,
+                corruptions_per_group=self.multi,
+                correlated_corruptions=self.correlated_corruptions,
             )
             return results
         else:
@@ -371,7 +275,7 @@ After you've fixed the code, please record your solution and process for compari
         return results
 
     async def run_eval_with_combined_corruptions(
-        self, agent, mode="remove", corruptions_per_group=4
+        self, agent, mode="remove", corruptions_per_group=4, correlated_corruptions=False
     ):
         """
         Run evaluation where corruptions with related functions in the same codebase
@@ -387,7 +291,7 @@ After you've fixed the code, please record your solution and process for compari
         """
         # Group problems by repository and related functions
         corruption_groups = self._group_problems_by_function_relationship(
-            corruptions_per_group
+            corruptions_per_group, correlated_corruptions
         )
 
         # Create tasks for each group of problems
@@ -400,14 +304,24 @@ After you've fixed the code, please record your solution and process for compari
         results = await asyncio.gather(*tasks)
         return results
 
+    def _get_function_key(self, problem: Problem):
+        fpath = problem.fpath
+        if fpath.startswith(problem.repo.code_path + "/"):
+            fpath = fpath[len(problem.repo.code_path) + 1:]
+        return (
+            fpath,
+            problem.function_name,
+        )
+
     def _group_problems_by_function_relationship(
-        self, corruptions_per_group=4, correlated=False
+        self, corruptions_per_group=4, correlated_corruptions=False
     ):
         """
         Group problems based on function relationships within each repository.
 
         Args:
             corruptions_per_group: Maximum number of corruptions to combine in a single group.
+            correlated: Whether to only include problems with related functions.
 
         Returns:
             A list of lists, where each inner list contains problems with related functions.
@@ -417,7 +331,7 @@ After you've fixed the code, please record your solution and process for compari
         problems_by_repo = {}
         repos = {}
         for problem in self.problems:
-            repo_path = os.path.join(problem.repo.path, problem.repo.code_path)
+            repo_path = problem.repo.path
             if repo_path not in problems_by_repo:
                 problems_by_repo[repo_path] = []
             problems_by_repo[repo_path].append(problem)
@@ -428,12 +342,16 @@ After you've fixed the code, please record your solution and process for compari
 
         for repo_path, repo_problems in problems_by_repo.items():
             if not os.path.exists(repo_path):
-                repo_path = os.path.join(
-                    prepare_directory(repos[repo_path]), repos[repo_path].code_path
-                )
-
+                repo_path = prepare_directory(repos[repo_path])
+            
             try:
-                function_graph, _ = build_function_graph(repo_path)
+                if correlated_corruptions:
+                    logging.info(f"Building function graph for {repo_path}")
+                    function_graph, _ = build_function_graph(repo_path)
+                    logging.info(f"Function graph built for {repo_path}")
+                else:
+                    # Unused
+                    function_graph = {}
 
                 # Process each problem in this repository
                 remaining_problems = repo_problems.copy()
@@ -444,20 +362,12 @@ After you've fixed the code, please record your solution and process for compari
                     current_group = [base_problem]
 
                     # Get the function key for the base problem
-                    base_function_key = (
-                        base_problem.fpath.replace(
-                            base_problem.repo.code_path + "/", ""
-                        ),
-                        base_problem.function_name,
-                    )
+                    base_function_key = self._get_function_key(base_problem)
 
                     # Identify related functions based on graph
                     related_functions = self._get_related_functions(
                         base_function_key, function_graph
                     )
-
-                    if correlated and len(related_functions) < corruptions_per_group:
-                        continue
 
                     # Find other problems with functions related to the base problem
                     i = 0
@@ -466,30 +376,30 @@ After you've fixed the code, please record your solution and process for compari
                         and len(current_group) < corruptions_per_group
                     ):
                         problem = remaining_problems[i]
-                        problem_function_key = (
-                            problem.fpath.replace(problem.repo.code_path + "/", ""),
-                            problem.function_name,
-                        )
 
                         # Check if this problem's function is related to the base problem
-                        if problem_function_key in related_functions or (
-                            not correlated
-                        ):
+                        if not correlated_corruptions or self._get_function_key(problem) in related_functions:
                             current_group.append(remaining_problems.pop(i))
                         else:
                             i += 1
 
                     if len(current_group) == corruptions_per_group:
                         grouped_problems.append(current_group)
+                    else:
+                        logging.warning(f"Not enough related functions{" remain" if grouped_problems else ""} for {base_problem.function_name} in {repo_path} to form a group of {corruptions_per_group} problems")
+                        # Put back unused problems
+                        remaining_problems.extend(current_group[1:])
+                
 
             except Exception as e:
                 # If we can't build the function graph, create individual groups
+                logging.warning(f"Error building function graph for {repo_path}: {str(e)}")
                 print(f"Error building function graph for {repo_path}: {str(e)}")
                 continue
 
         return grouped_problems
 
-    def _get_related_functions(self, function_key, function_graph, max_distance=3):
+    def _get_related_functions(self, function_key: Tuple[str, str], function_graph, max_distance=3) -> Set[Tuple[str, str]]:
         """
         Get a set of functions related to the given function within a certain distance in the graph.
 
@@ -534,7 +444,7 @@ After you've fixed the code, please record your solution and process for compari
 
         return related
 
-    async def _eval_combined_problems(self, problem_group, agent, mode):
+    async def _eval_combined_problems(self, problem_group: List[Problem], agent: Agent, mode, problem_file_path=None):
         """
         Evaluate a group of problems by applying corruptions successively.
 
@@ -542,6 +452,7 @@ After you've fixed the code, please record your solution and process for compari
             problem_group: A list of problems with related functions.
             agent: The agent to evaluate.
             mode: The mode for applying corruptions.
+            problem_file_path: Where to cache the attempt
 
         Returns:
             The evaluation result.
@@ -549,24 +460,33 @@ After you've fixed the code, please record your solution and process for compari
         if not problem_group:
             return {}
 
+        is_multi = len(problem_group) > 1
+
         async with self.semaphore:
             base_problem = problem_group[0]
             try:
                 worker_dir = self.prepare_env_for_problem(base_problem, mode)
 
                 for problem in problem_group[1:]:
-                    self._apply_additional_corruption(worker_dir, problem)
-
+                    self._apply_additional_corruption(worker_dir, problem, mode)
             except Exception as e:
                 print(
                     f"Error preparing environment for {base_problem.function_name}: {e}"
                 )
 
-            base_problem.test_info = await run_tests(
-                worker_dir,
-                base_problem.repo.test_command,
-                base_problem.function_name + problem_group[1].function_name,
-            )
+            # Update base_problem to reflect the combined corruption
+            if is_multi:
+                base_problem = base_problem.model_copy()
+
+                base_problem.function_name = ",".join([p.function_name for p in problem_group])
+
+                base_problem.test_info = await run_tests(
+                    worker_dir,
+                    base_problem.repo.test_command or "",
+                    base_problem.function_name,
+                )
+                base_problem.corruption = None
+
 
             if agent.model_interface.model_name == "human":
                 # Create a README file for human evaluators with our factored-out function
@@ -585,39 +505,89 @@ After you've fixed the code, please record your solution and process for compari
                 print(f"Mode: {mode}")
                 sys.exit(0)
 
-            problem_env = ProblemEnv(problem=base_problem, execution_dir=worker_dir)
+            # Check if the cache file exists and load the attempt if it does
+            loaded = False
 
-            # Run the agent
-            attempt = await agent(problem_env)
+            if agent.is_cacheable and problem_file_path is not None and os.path.exists(problem_file_path):
+                try:
+                    with open(problem_file_path, "r") as f:
+                        saved_data = json.load(f)
+                        attempt = StudentAttempt(
+                            problem_spec=saved_data["problem"],
+                            student_solution="",  # This field isn't saved in the file
+                            actual_solution="",
+                            score=saved_data["score"],
+                            metadata=saved_data["metadata"],
+                        )
+                        if saved_data["score"] is None:
+                            attempt.score = 0
+                            loaded = False
 
-            # Add metadata about the combined corruption
-            attempt.metadata["num_corruptions"] = len(problem_group)
+                        tool_calls = [
+                            (x["args"]["file_path"], x["args"]["func_name"])
+                            for x in attempt.metadata["tool_usage"]
+                            if x["tool"] == "replace_function"
+                        ]
 
-            attempt.metadata["corruption_functions"] = [
-                p.function_name for p in problem_group
-            ]
+                        right_function = tool_calls and tool_calls[-1] == (
+                            problem.fpath,
+                            problem.function_name,
+                        )
+                        attempt.metadata["right_function"] = right_function
+                    logging.info(f"Loading saved attempt from {problem_file_path}, skipping evaluation")
+                    loaded = True
 
-            submit_calls = [
-                (x["args"]["file_path"], x["args"]["func_name"])
-                for x in attempt.metadata["tool_usage"]
-                if x["tool"] == "replace_function"
-                and "file_path" in x["args"]
-                and "func_name" in x["args"]
-            ]
+                except Exception as e:
+                    logging.info(
+                        f"Failed to load saved attempt: {e}. Rerunning problem."
+                    )
 
-            right_function = True
+            if not loaded:
+                # If file doesn't exist, run the agent
+                problem_env = ProblemEnv(problem=base_problem, execution_dir=worker_dir)
 
-            for p in problem_group:
-                if (p.fpath, p.function_name) not in submit_calls:
-                    right_function = False
+                # Run the agent
+                attempt = await agent(problem_env)
 
-            attempt.metadata["right_function"] = right_function
+                # Add metadata about the combined corruption
+                if is_multi:
+                    attempt.metadata["num_corruptions"] = len(problem_group)
+
+                    attempt.metadata["corruption_functions"] = [
+                        p.function_name for p in problem_group
+                    ]
+                
+                # Check that the right functions were changed
+                # TODO: (should this validate that the wrong functions were not changed?)
+                submit_calls = [
+                    (x["args"]["file_path"], x["args"]["func_name"])
+                    for x in attempt.metadata["tool_usage"]
+                    if x["tool"] == "replace_function"
+                    and "file_path" in x["args"]
+                    and "func_name" in x["args"]
+                ]
+                right_function = True
+                for p in problem_group:
+                    if (p.fpath, p.function_name) not in submit_calls:
+                        right_function = False
+
+                attempt.metadata["right_function"] = right_function
+
+                # Save the attempt to the cache file
+                if problem_file_path is not None and agent.is_cacheable:
+                    result_data = {
+                        "problem": attempt.problem_spec,
+                        "score": attempt.score,
+                        "metadata": attempt.metadata,
+                    }
+                    with open(problem_file_path, "w") as f:
+                        json.dump(result_data, f)
 
             shutil.rmtree(worker_dir)
 
             return attempt
 
-    def _apply_additional_corruption(self, worker_dir, problem):
+    def _apply_additional_corruption(self, worker_dir, problem, mode):
         """
         Apply an additional corruption to the working directory.
 
@@ -625,14 +595,14 @@ After you've fixed the code, please record your solution and process for compari
             worker_dir: The working directory.
             problem: The problem containing the corruption to apply.
         """
-        import os
-
         # Get the file path
         file_path = os.path.join(worker_dir, problem.fpath)
 
         # Find and remove the function, then insert the corrupted version
-        try:
-            removal_info = remove_functions_in_file(file_path, problem.function_name)
+        removal_info = remove_functions_in_file(file_path, problem.function_name)
+        if mode != "remove":
+            if problem.corruption is None:
+                raise ValueError(f"No corruption found for {problem.function_name} in {problem.fpath}. Did you forget to run problem_generator with the corrupt or corruptall commands, or mean to run in remove mode?")
             insert_function_code(
                 problem.corruption["code"],
                 removal_info["func_start"],
@@ -640,5 +610,3 @@ After you've fixed the code, please record your solution and process for compari
                 removal_info["indent"],
                 file_path,
             )
-        except:
-            print(f"Could not insert on {problem.function_name}")

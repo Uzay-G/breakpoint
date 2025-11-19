@@ -6,9 +6,9 @@ import logging
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from breakpoint_eval.agents import CodeAgent
+from breakpoint_eval.agents import CodeAgent, DryRunAgent
 from breakpoint_eval.code_benchmark import CorruptionBenchmark
 from breakpoint_eval.problem_generator import Problem, load_problems_from_json
 
@@ -63,7 +63,9 @@ class EvalConfig:
     log_file: str = ""
     thinking_budget: int = 10000
     multi: int = 1
-
+    correlated_corruptions: bool = False
+    dry_run: bool = False
+    dump_dir: Optional[str] = None
 
 async def run_eval(config: EvalConfig):
     """
@@ -73,7 +75,10 @@ async def run_eval(config: EvalConfig):
     """
 
     benchmark = CorruptionBenchmark(
-        problems=config.problems, num_workers=config.num_workers, multi=args.multi
+        problems=config.problems,
+        num_workers=config.num_workers,
+        multi=config.multi,
+        correlated_corruptions=config.correlated_corruptions,
     )
 
     results = {}
@@ -88,17 +93,20 @@ async def run_eval(config: EvalConfig):
         repair_mode = "target" if mode in ["remove", "corrupt"] else "discovery"
 
         for model_name in config.model_names:
-            agent = CodeAgent(
-                model_name=model_name,
-                max_iterations=config.max_iterations,
-                test_budget=config.test_budget,
-                repair_mode=repair_mode,
-                tool_use=config.tool_use,
-                thinking_budget=config.thinking_budget,
-            )
+            if config.dry_run or config.dump_dir:
+                agent = DryRunAgent(dump_dir=config.dump_dir)
+            else:
+                agent = CodeAgent(
+                    model_name=model_name,
+                    max_iterations=config.max_iterations,
+                    test_budget=config.test_budget,
+                    repair_mode=repair_mode,
+                    tool_use=config.tool_use,
+                    thinking_budget=config.thinking_budget,
+                )
 
             logging.info("Starting evaluation")
-            print(config.num_workers, "FROM EVAL")
+            print(f"Running for model {model_name}, mode {mode}, workers: {config.num_workers}")
             mode_results[model_name] = await benchmark.run_eval(agent, mode=mode)
 
             info_dict = {
@@ -107,7 +115,7 @@ async def run_eval(config: EvalConfig):
                 "max_iterations": config.max_iterations,
                 "thinking_budget": config.thinking_budget,
                 "test_budget": config.test_budget,
-                "tools_allowed": [x["function"]["name"] for x in agent._get_tools()],
+                "tools_allowed": [x["function"]["name"] for x in agent.get_tools()],
                 "log_file": config.log_file,
             }
 
@@ -118,6 +126,7 @@ async def run_eval(config: EvalConfig):
 if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = f"logs/eval-{timestamp}.log"
+    print("Logging to", log_file)
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
@@ -161,11 +170,26 @@ if __name__ == "__main__":
         help="For discovery, apply multiple corruptions at once",
     )
     parser.add_argument(
+        "--correlated_corruptions",
+        action="store_true",
+        help="For --multi, should the corruptions be for functions near each other in the function call graph?",
+    )
+    parser.add_argument(
         "--model",
         default=["gpt-4.1-nano"],
         type=str,
         nargs="+",
         help="Model name(s) to evaluate. Can provide multiple models.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Skip running the agent, immediately scoring 0",
+    )
+    parser.add_argument(
+        "--dump-dir",
+        type=str,
+        help="Directory to dump the generated code. (implies --dry-run)",
     )
 
     args = parser.parse_args()
@@ -181,7 +205,10 @@ if __name__ == "__main__":
     problems = load_problems_from_json(args.data)
     random.shuffle(problems)
 
-    if args.n_problems == 1 and args.function_name:
+    if args.function_name:
+        if args.n_problems != 1:
+            logging.info(f"Warning: --n_problems is {args.n_problems}, but --function_name is set. Ignoring --n_problems.")
+
         matching_problems = [
             x for x in problems if x.function_name == args.function_name
         ]
@@ -210,7 +237,10 @@ if __name__ == "__main__":
         log_file=log_file,
         thinking_budget=args.thinking_budget,
         multi=args.multi,
+        correlated_corruptions=args.correlated_corruptions,
         tool_use=True,
+        dry_run=args.dry_run,
+        dump_dir=args.dump_dir,
     )
 
     asyncio.run(run_eval(config))

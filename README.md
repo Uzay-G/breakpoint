@@ -37,6 +37,20 @@ You can generate both of these Breakpoint task modes on arbitrary code, if it's 
 
 The central data generation script is run with `python3 -m breakpoint_eval.problem_generator --dump_file <path> <command> options/arguments`
 
+### Checkout repository
+
+Setup your repository with a venv named venv and pytest installed.
+
+```
+cd ~/repos
+git clone https://github.com/mongomock/mongomock.git
+cd mongomock
+uv venv venv
+source venv/bin/activate
+uv pip install -e .     
+uv pip install pytest-reportlog
+```
+
 ### Process repository for candidate functions
 
 First Breakpoint processes your code to find suitable functions to corrupt.
@@ -44,10 +58,10 @@ First Breakpoint processes your code to find suitable functions to corrupt.
 For example:
 
 ```
-python3 -m breakpoint_eval.problem_generator --dump_file archivy_problems.json cache --num_workers 20  --num_functions 15 --code_path archivy --repo_path ~/repos/archivy
+python3 -m breakpoint_eval.problem_generator --dump_file mongomock_problems.json cache --num_workers 20  --num_functions 15 --code_path mongomock --repo_path ~/repos/mongomock
 ```
 
-This would source 15 functions from the Archivy repository stored locally. The `code_path` points to the location of the source code within the repository. This generates a list of functions that were deemed good as corruptions. 
+This would source 15 functions from the mongomock repository stored locally. The `code_path` points to the location of the source code within the repository. This generates a list of functions that were deemed good as corruptions. 
 See `python3 -m breakpoint_eval.problem_generator cacheall --help` for options on sourcing from a whole directory of codebases.
 
 ### Generating Corruptions
@@ -57,7 +71,7 @@ You can directly use the file from the last step to run `remove` mode evaluation
 The command to source language model generated corruptions is the following:
 
 ```
-python3 -m breakpoint_eval.problem_generator --dump_file corruptions.json corruptall --cache_path <file from previous step> --num_corruptions NUM_CORRUPTIONS --model MODEL --num_workers NUM_WORKERS
+python3 -m breakpoint_eval.problem_generator corruptall --output corruptions.json --input_json <file from previous step> --num_corruptions NUM_CORRUPTIONS --model MODEL --num_workers NUM_WORKERS
 ```
 
 This will save language model corruptions in `corruptions.json`.
@@ -131,12 +145,22 @@ Options:
 For example:
 
 ```
-python3 -m runners.eval --model o4-mini --data <data file from previous step> --mode remove  --workers 15 --max_iterations 16 --test_budget 4 --n_problems 10 --output o4-run.json
+python3 -m runners.eval --model o4-mini --data <data file from previous step> --mode remove  --workers 15 --max_iterations 16 --test_budget 4 --n_problems 10 --output o4-run.jsonl
 ```
 
 This will produce a JSONL with detailed agent traces and the perfect solve rate of the model which you can then analyze using our consolidator and plotter scripts.
 
 If you have any problems along the way please open an issue!
+
+### Bulk process
+
+Optionally, you can check out multiple python packages as subdirectoires of a `repos_dir` and bulk process the `cache` and `corrupt` functions with `cacheall` and `corruptall`:
+
+```
+python3 -m lib.problem_generator cacheall --repos_dir ~/repos --output_json all.json  --num_workers 20 --functions_per_repo 15
+```
+
+
 
 ## Contributing
 

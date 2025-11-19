@@ -12,22 +12,20 @@ logger = logging.getLogger(__name__)
 
 
 class Repo(BaseModel):
-    url: str
-    commit: str
 
     name: str | None = ""
     path: str | None = None
     code_path: str | None = None
     test_command: str | None = "source venv/bin/activate && ./venv/bin/pytest"
     stats: dict | None = None
+    url: str | None = None
+    commit: str | None = None
 
     def model_post_init(self, __context):
-        if all(
-            [
-                self.url.startswith("https://github.com/"),
-                self.url.count("/") == 4,
-                not self.url.endswith(".git"),
-            ]
+        if (self.url is not None and
+            self.url.startswith("https://github.com/") and
+            self.url.count("/") == 4 and 
+            not self.url.endswith(".git")
         ):
             # Auto add .git suffix if not present
             logger.info(
@@ -36,7 +34,9 @@ class Repo(BaseModel):
             self.url = self.url + ".git"
 
     @property
-    def name_from_url(self) -> str:
+    def name_from_url(self) -> str | None:
+        if self.url is None:
+            return None
         # example url: https://github.com/UKGovernmentBEIS/inspect_ai.git
         assert self.url.endswith(".git"), "URL must end with .git"
         return self.url.split("/")[-1].removesuffix(".git")

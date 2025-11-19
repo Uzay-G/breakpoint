@@ -4,16 +4,18 @@ import datetime
 import json
 import logging
 import os
+from pathlib import Path
 import pickle
 import random
 import shutil
-import subprocess
+from tqdm import tqdm
 from typing import Optional
 
 from breakpoint_eval.agents import CodeAgent
 from breakpoint_eval.codeparsing_utils import (
     build_function_graph,
     extract_function_info,
+    get_current_commit,
     get_origin_url,
     get_repo_info,
     parse_repo_for_functions,
@@ -126,8 +128,7 @@ class CodebaseCache:
 
         return test_output
 
-    async def seed_functions(self, n: Optional[int], hardmode=False):
-        print(n, hardmode)
+    async def seed_functions(self, n: Optional[int], hardmode=False, verbose=False):
         self.processing_queue = set()
 
         if hardmode:
@@ -141,9 +142,13 @@ class CodebaseCache:
 
         random.shuffle(self.viable_functions)
 
+        progress = tqdm(total=len(self.viable_functions), desc="Seeding functions", disable=not verbose, leave=False)
+
         queue = asyncio.Queue()
         for func in self.viable_functions:
             queue.put_nowait(func)
+
+        stop_event = asyncio.Event()
 
         async def worker(worker_id, stop_event):
             while not stop_event.is_set() and not queue.empty():
@@ -152,31 +157,45 @@ class CodebaseCache:
                     complexity = self.fn_complexity[func].get("code_line_count", 0)
                     centrality = self.fn_complexity[func]["centrality"].get("degree", 0)
 
-                    if (
-                        complexity >= complexity_lower_bound
-                        and centrality >= centrality_lower_bound
-                    ):
-                        test_output = await self.assess_function(func)
-                        num_failures = test_output["failed"]
+                    if complexity < complexity_lower_bound or centrality < centrality_lower_bound:
+                        progress.update(1)
+                        continue
 
-                        logging.info(
-                            f"Worker {worker_id}: After removing function '{func}', {test_output['failed']} tests failed."
-                        )
+                    test_output = await self.assess_function(func)
 
-                        if num_failures >= failures_lower_bound:
-                            self.fn_info_cache[func] = test_output
+                    if test_output is False:
+                        progress.update(1)
+                        continue
 
-                            logging.info(f"LENGTH: {len(self.fn_info_cache)}")
+                    num_failures = test_output["failed"]
 
-                            if n is not None and len(self.fn_info_cache) >= n:
-                                stop_event.set()
-                                return
+                    logging.info(
+                        f"Worker {worker_id}: After removing function {func}, {num_failures} tests failed."
+                    )
+
+                    if num_failures < failures_lower_bound:
+                        progress.update(1)
+                        continue
+
+                    self.fn_info_cache[func] = test_output
+
+                    logging.info(f"Functions found: {len(self.fn_info_cache)}")
+                    progress.set_postfix_str(f"Functions found: {len(self.fn_info_cache)}")
+                    progress.update(1)
+
+                    if n is not None and len(self.fn_info_cache) >= n:
+                        stop_event.set()
+                        return
 
                 except asyncio.QueueEmpty:
                     return
 
-        stop_event = asyncio.Event()
+
         await asyncio.gather(*[worker(i, stop_event) for i in range(self.num_workers)])
+
+        progress.close()
+        if n is not None and  len(self.fn_info_cache) < n:
+            logging.warning(f"Only found {len(self.fn_info_cache)} functions, expected {n}")
 
     def dump(self, filename):
         """
@@ -336,7 +355,7 @@ class SubtleInverseGenerator:
 
             for test_file, test_function in failed_tests[:5]:
                 test_file_path = os.path.join(problem.repo.path, test_file)
-                print(test_file_path)
+                print("Generating corruption for", test_file_path, test_function)
                 test_fn_info = extract_function_info(
                     open(test_file_path, "r").read(), test_function
                 )
@@ -440,7 +459,7 @@ def load_problems_from_json(json_file_path):
         repo = Repo(
             path=problem["repo"]["path"],
             name=problem["repo"]["name"],
-            code_path=problem["repo"].get("name", ""),
+            code_path=problem["repo"].get("code_path", ""),
             url=problem["repo"].get("url", ""),
             test_command=problem["repo"].get(
                 "test_command", "source venv/bin/activate && ./venv/bin/pytest"
@@ -464,7 +483,7 @@ def load_problems_from_json(json_file_path):
 if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"logs/corruption_debugger_{timestamp}.log"
-    print(log_filename)
+    print("Logging to", log_filename)
 
     logging.basicConfig(
         filename=log_filename,
@@ -537,8 +556,8 @@ if __name__ == "__main__":
     cache_parser.add_argument(
         "--num_functions",
         type=int,
-        default=0,
-        help="Number of functions to seed (default: 0, meaning no seeding)",
+        default=None,
+        help="Number of functions to seed (default: seed all functions)",
     )
 
     cacheall_parser = subparsers.add_parser(
@@ -591,7 +610,7 @@ if __name__ == "__main__":
         "--output",
         type=str,
         required=True,
-        help="Path to the output file to save the corruptions (pickle format)",
+        help="Path to the output file to save the corruptions",
     )
     corruptall_parser.add_argument(
         "--model",
@@ -653,34 +672,22 @@ if __name__ == "__main__":
                     json.dumps(dataset, f)
 
         elif args.command == "cache":
-            print(args.repo_path, args.code_path)
-            repo = Repo(path=args.repo_path, code_path=args.code_path)
+            repo_name = Path(args.repo_path).name
+            repo = Repo(path=args.repo_path, code_path=args.code_path, name=repo_name)
             repo.url = get_origin_url(args.repo_path)
+            repo.commit = get_current_commit(args.repo_path)
 
-            # Get the current commit hash
-            try:
-                commit_result = subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    cwd=args.repo_path,
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                repo.commit = commit_result.stdout.strip()
-                logging.info(f"Got commit hash: {repo.commit}")
-            except subprocess.CalledProcessError as e:
-                logging.warning(f"Failed to get commit hash: {e}")
             crg = CodebaseCache(repo=repo, num_workers=args.num_workers)
             logging.info("Created a new CodebaseCache instance.")
 
-            if args.num_functions:
-                await crg.seed_functions(args.num_functions)
-                logging.info(f"Seeded {args.num_functions} functions.")
+            await crg.seed_functions(args.num_functions, verbose=True)
+            logging.info(f"Seeded {len(crg.fn_info_cache)} functions.")
 
             problems = crg.get_problems()
+            logging.info(f"Dumping {len(problems)} problems to {args.dump_file}.")
             with open(args.dump_file, "w") as f:
                 f.write(json.dumps([x.model_dump() for x in problems]))
-                logging.info(f"Dumped instance state to {args.dump_file}")
+            logging.info(f"Dumped instance state to {args.dump_file}")
 
         elif args.command == "cacheall":
             problems = []
@@ -697,9 +704,11 @@ if __name__ == "__main__":
                 if os.path.isdir(os.path.join(args.repos_dir, d))
             ]
 
-            for repo_name in repo_dirs:
-                if repo_name in repos:
-                    continue
+            to_process = [repo_name for repo_name in repo_dirs if repo_name not in repos]
+
+            for repo_name in (progress := tqdm(to_process, desc="Processing repositories")):
+
+                progress.set_description(f"Processing repository: {repo_name}")
                 repo_path = os.path.join(args.repos_dir, repo_name)
 
                 if not repo_path.endswith("/"):
@@ -708,90 +717,17 @@ if __name__ == "__main__":
                 logging.info(
                     f"\n{'=' * 80}\nProcessing repository: {repo_name}\n{'=' * 80}"
                 )
-                venv_path = os.path.join(repo_path, "venv")
 
-                # Get repository configuration or use default
-                install_cmd = f"source {venv_path}/bin/activate && ./venv/bin/pip install pytest-reportlog"
-                logging.info("Installing pytest-reportlog...")
-                process = await asyncio.create_subprocess_shell(
-                    install_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    executable="/bin/bash",
-                    cwd=repo_path,
-                )
-                await process.communicate()
+                setup_repo_env(repo_path)
 
-                code_path = None
                 test_command = "source venv/bin/activate && ./venv/bin/pytest"
                 n_functions = args.functions_per_repo
 
-                # If code_path is not specified, try to detect it
+                code_path = infer_code_path(repo_path)
+
                 if not code_path:
-                    try:
-                        potential_code_dirs = [
-                            d
-                            for d in os.listdir(repo_path)
-                            if os.path.isdir(os.path.join(repo_path, d))
-                            and not d.startswith(".")
-                            and d
-                            not in ["test", "tests", "venv", "env", "docs", "examples"]
-                        ]
-
-                        if len(potential_code_dirs) == 1:
-                            code_path = potential_code_dirs[0] + "/"
-                            logging.info(f"Detected code path: {code_path}")
-                        elif repo_name.lower() in os.listdir(repo_path):
-                            code_path = repo_name.lower() + "/"
-                            logging.info(
-                                f"Using repository name as code path: {code_path}"
-                            )
-                        else:
-                            # Look for directory with most Python files
-                            py_file_counts = {}
-                            for d in potential_code_dirs:
-                                dir_path = os.path.join(repo_path, d)
-                                py_files = []
-                                for root, _, files in os.walk(dir_path):
-                                    py_files.extend(
-                                        [f for f in files if f.endswith(".py")]
-                                    )
-                                py_file_counts[d] = len(py_files)
-
-                            # Also count python files in the root directory
-                            root_py_files = [
-                                f for f in os.listdir(repo_path) if f.endswith(".py")
-                            ]
-                            py_file_counts[""] = len(
-                                root_py_files
-                            )  # Empty string represents root
-
-                            # Find directory with most Python files
-                            if py_file_counts:
-                                best_dir = max(
-                                    py_file_counts.items(), key=lambda x: x[1]
-                                )
-                                if (
-                                    best_dir[1] > 0
-                                ):  # If there's at least one Python file
-                                    code_path = best_dir[0] + "/" if best_dir[0] else ""
-                                    logging.info(
-                                        f"Using directory with most Python files ({best_dir[1]}): {code_path}"
-                                    )
-                                else:
-                                    print(
-                                        f"Skipping {repo_path} for lack of Python files"
-                                    )
-                                    continue
-                            else:
-                                print(
-                                    f"Skipping {repo_path} for lack of clear source directory"
-                                )
-                                continue
-
-                    except Exception as e:
-                        logging.error(f"Error detecting code path: {str(e)}")
-                        continue
+                    logging.info(f"Could not infer code path for {repo_name}, skipping")
+                    continue
 
                 repo_info = Repo(
                     name=repo_name,
@@ -801,24 +737,15 @@ if __name__ == "__main__":
                 )
 
                 repo_info.url = get_origin_url(repo_path)
+                repo_info.commit = get_current_commit(repo_path)
 
-                # Get the current commit hash
-                try:
-                    commit_result = subprocess.run(
-                        ["git", "rev-parse", "HEAD"],
-                        cwd=repo_path,
-                        capture_output=True,
-                        text=True,
-                        check=True,
-                    )
-                    repo_info.commit = commit_result.stdout.strip()
-                    logging.info(f"Got commit hash: {repo_info.commit}")
-                except subprocess.CalledProcessError as e:
-                    logging.warning(f"Failed to get commit hash for {repo_name}: {e}")
                 repo_code_info = get_repo_info(os.path.join(repo_path, code_path))
 
-                print(repo_code_info)
-                if repo_code_info["functions_count"] < 100 or not repo_info.url:
+                if repo_code_info["functions_count"] < 100:
+                    logging.warning(f"Skipping {repo_name} because it has less than 100 functions")
+                    continue
+                elif not repo_info.url:
+                    logging.warning(f"Skipping {repo_name} because it has no url")
                     continue
 
                 try:
@@ -832,7 +759,7 @@ if __name__ == "__main__":
                         test_command=test_command,
                     )
 
-                    await cache.seed_functions(n_functions, hardmode=args.hard)
+                    await cache.seed_functions(n_functions, hardmode=args.hard, verbose=True)
 
                     problems += [x.model_dump() for x in cache.get_problems()]
 

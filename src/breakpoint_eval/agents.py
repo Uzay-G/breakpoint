@@ -1,7 +1,10 @@
+from abc import ABC, abstractmethod
 import json
 import logging
 import os
-from typing import Any, Dict, List
+from pathlib import Path
+import time
+from typing import Any, Dict, List, Optional
 
 from breakpoint_eval.chat import Chat, ModelInterface, StudentAttempt
 from breakpoint_eval.codeparsing_utils import (
@@ -14,8 +17,21 @@ from breakpoint_eval.codeparsing_utils import (
 )
 from breakpoint_eval.problem import ProblemEnv
 
+class Agent(ABC):
 
-class CodeAgent:
+    model_interface: ModelInterface
+
+    is_cacheable: bool = True
+
+    @abstractmethod
+    async def __call__(self, env: ProblemEnv) -> StudentAttempt:
+        ...
+
+    @abstractmethod
+    def get_tools(self) -> List[Dict[str, Any]]:
+        ...
+
+class CodeAgent(Agent):
     def __init__(
         self,
         model_name: str = "o3-mini",
@@ -53,8 +69,9 @@ class CodeAgent:
         self.iterate_with_tests = iterate_with_tests
         self.thinking_budget = thinking_budget
         self.file_token_ratio = file_token_ratio
+        self.is_cacheable = True
 
-    def __call__(self, env: ProblemEnv) -> str:
+    async def __call__(self, env: ProblemEnv) -> StudentAttempt:
         """
         Fix a broken function using repo exploration and testing.
 
@@ -65,7 +82,7 @@ class CodeAgent:
             The fixed function code
         """
 
-        return self._run_agent(env)
+        return await self._run_agent(env)
 
     async def _run_agent(self, env: ProblemEnv) -> StudentAttempt:
         """Run the agent to fix the broken function."""
@@ -148,7 +165,7 @@ class CodeAgent:
             iterations_left = self.max_iterations - i
             message = ""
 
-            current_tools = self._get_tools()
+            current_tools = self.get_tools()
 
             if i == 0:
                 message = instructions
@@ -160,7 +177,7 @@ class CodeAgent:
 
                 current_tools = [
                     tool
-                    for tool in self._get_tools()
+                    for tool in self.get_tools()
                     if tool["function"]["name"] == "submit_attempt"
                     or tool["function"]["name"] == "replace_function"
                 ]
@@ -272,7 +289,7 @@ class CodeAgent:
         )
         return attempt
 
-    def _get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> List[Dict[str, Any]]:
         """Define the tools available to the agent."""
         tools = []
 
@@ -461,7 +478,7 @@ class CodeAgent:
                 }
 
             except Exception as e:
-                print(e)
+                print("Error listing directory:", e)
                 return {
                     "success": False,
                     "message": f"Error listing directory: {str(e)}",
@@ -781,3 +798,66 @@ class CodeAgent:
                 return {"success": False, "message": f"Error searching code: {str(e)}"}
         else:
             return {"success": False, "message": f"Unknown tool: {tool_name}"}
+
+class DryRunAgent(Agent):
+    def __init__(
+        self,
+        model_name: str = "o3-mini",
+        test_budget: int = 3,
+        max_iterations: int = 8,
+        max_tokens: int = 40000, 
+        mode: str = "fix",
+        instructions: str = "",
+        repair_mode: str = "target",
+        tool_use=False,
+        iterate_with_tests=True,
+        thinking_budget=2000,
+        file_token_ratio=0.1,  # Fraction of context to use for file reading
+        dump_dir: Optional[str] = None
+    ):
+        self.model_interface = ModelInterface(
+            model_name=model_name, max_tokens=max_tokens
+        )
+        self.test_budget = test_budget
+        self.max_iterations = max_iterations
+        self.instructions = instructions
+        self.mode = mode
+        self.repair_mode = repair_mode
+        self.tool_use = tool_use
+        self.iterate_with_tests = iterate_with_tests
+        self.thinking_budget = thinking_budget
+        self.file_token_ratio = file_token_ratio
+        self.dump_dir = dump_dir
+        self.is_cacheable = False
+
+    async def __call__(self, env: ProblemEnv) -> StudentAttempt:
+        problem = env.problem
+        test_info = problem.test_info
+        tool_usage = []
+
+        dump_path = None
+        if self.dump_dir is not None:
+            dump_path = Path(self.dump_dir) / Path(env.execution_dir).name
+            dump_file = Path(self.dump_dir) / (Path(env.execution_dir).name + ".json")
+            logging.info(f"Dumping problem {problem.function_name} to {dump_path}")
+            shutil.copytree(env.execution_dir, dump_path)
+            open(dump_file, "w").write(env.problem.model_dump_json())
+            dump_path = str(dump_path)
+
+        return StudentAttempt(
+            problem_spec=problem.function_name,
+            student_solution="",
+            actual_solution="",
+            score=0.0,
+            metadata={
+                "tool_usage": [],
+                "repo_path": problem.repo.path,
+                "file_path": problem.fpath,
+                "tool_usage": tool_usage,
+                "test_info": test_info,
+                "dump_path": dump_path,
+            },
+        )
+
+    def get_tools(self) -> List[Dict[str, Any]]:
+        return []

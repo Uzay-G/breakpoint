@@ -67,18 +67,88 @@ def get_origin_url(directory):
         print(f"Failed to get origin url for {directory}: {str(e)}")
         return ""
 
+def get_current_commit(repo_dir: str) -> Optional[str]:
+    # Get the current commit hash
+    try:
+        commit_result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        commit = commit_result.stdout.strip()
+        logging.info(f"Got commit hash: {commit}")
+        return commit
+    except subprocess.CalledProcessError as e:
+        logging.warning(f"Failed to get commit hash: {e}")
+        return None
 
-def gther_python_files(repo_dir: str) -> list:
+def infer_code_path(repo_dir: str) -> Optional[str]:
     """
-    Recursively collect all Python (.py) files from the repository.
+    Try to guess the code path (the location of the package) in the repository.
     """
-    python_files = []
-    for root, _, files in os.walk(repo_dir):
-        for file in files:
-            if file.endswith(".py"):
-                python_files.append(os.path.join(root, file))
-    return python_files
+    try:
+        potential_code_dirs = [
+            d
+            for d in os.listdir(repo_dir)
+            if os.path.isdir(os.path.join(repo_dir, d))
+            and not d.startswith(".")
+            and d not in ["test", "tests", "venv", "env", "docs", "examples"]
+        ]
 
+        if len(potential_code_dirs) == 1:
+            code_path = potential_code_dirs[0] + "/"
+            logging.info(f"Detected code path: {code_path}")
+            return code_path
+
+
+        if repo_dir.lower() in os.listdir(repo_dir):
+            code_path = repo_dir.lower() + "/"
+            logging.info(
+                f"Using repository name as code path: {code_path}"
+            )
+            return code_path
+        
+        # Look for directory with most Python files
+        py_file_counts = {}
+        for d in potential_code_dirs:
+            dir_path = os.path.join(repo_dir, d)
+            py_files = []
+            for root, _, files in os.walk(dir_path):
+                py_files.extend(
+                    [f for f in files if f.endswith(".py")]
+                )
+            py_file_counts[d] = len(py_files)
+
+        # Also count python files in the root directory
+        root_py_files = [
+            f for f in os.listdir(repo_dir) if f.endswith(".py")
+        ]
+        py_file_counts[""] = len(
+            root_py_files
+        )  # Empty string represents root
+
+        # Find directory with most Python files
+        if py_file_counts:
+            best_dir = max(
+                py_file_counts.items(), key=lambda x: x[1]
+            )
+            if best_dir[1] > 0:  # If there's at least one Python file
+                code_path = best_dir[0] + "/" if best_dir[0] else ""
+                logging.info(
+                    f"Using directory with most Python files ({best_dir[1]}): {code_path}"
+                )
+                return code_path
+            else:
+                print("Skipping {repo_dir} for lack of Python files")
+                return None
+        else:
+            print(f"Skipping {repo_dir} for lack of clear source directory")
+            return None
+    except Exception as e:
+        logging.error(f"Error detecting code path: {str(e)}")
+        return None
 
 class FunctionDefInfo:
     """
@@ -228,12 +298,13 @@ def gather_python_files(repo_dir: str) -> list:
     Recursively collect all Python (.py) files from the repository.
     """
     python_files = []
-    for root, _, files in os.walk(repo_dir):
+    for root, dirs, files in os.walk(repo_dir):
+        if "venv" in dirs:
+            dirs.remove("venv")
         for file in files:
             if file.endswith(".py"):
                 python_files.append(os.path.join(root, file))
     return python_files
-
 
 def build_function_graph(
     repo_dir: str, alpha=0.5
@@ -241,6 +312,10 @@ def build_function_graph(
     """
     Build a function dependency graph across the entire repository.
     """
+
+    if not os.path.exists(repo_dir):
+        logging.warning(f"Repository directory {repo_dir} does not exist")
+        raise Exception(f"Repository directory {repo_dir} does not exist")
 
     # Get function info using existing parser
     repo_functions = parse_repo_for_functions(repo_dir)
@@ -257,17 +332,20 @@ def build_function_graph(
 
     try:
         # Find Python files
-        python_files = []
-        for root, _, files in os.walk(repo_dir):
-            for file in files:
-                if file.endswith(".py"):
-                    python_files.append(os.path.join(root, file))
+        python_files = gather_python_files(repo_dir)
+
+        if len(python_files) == 0:
+            logging.warning(f"No Python files found in {repo_dir}")
+            raise Exception(f"No Python files found in {repo_dir}")
+
 
         code2flow.code2flow(python_files, temp_path)
 
         # Load code2flow output
         with open(temp_path, "r") as f:
             flow_data = json.load(f)
+
+        logging.info("Building function graph...")
 
         nodes = flow_data.get("graph", {}).get("nodes", {})
         edges = flow_data.get("graph", {}).get("edges", [])
@@ -362,14 +440,11 @@ def parse_repo_for_functions(
        { relative_file_path: [FunctionDefInfo, ...], ... }
     """
     repo_functions = {}
-    for root, _, files in os.walk(repo_dir):
-        for filename in files:
-            if filename.endswith(".py"):
-                abs_path = os.path.join(root, filename)
-                rel_path = os.path.relpath(abs_path, repo_dir)
-                func_infos = parse_python_file(abs_path, build_dependency_info)
-                if func_infos:
-                    repo_functions[rel_path] = func_infos
+    for python_file in gather_python_files(repo_dir):
+        func_infos = parse_python_file(python_file, build_dependency_info)
+        rel_path = os.path.relpath(python_file, repo_dir)
+        if func_infos:
+            repo_functions[rel_path] = func_infos
     return repo_functions
 
 
@@ -702,24 +777,39 @@ def insert_function_code(
 def get_venv_env(venv_dir):
     """
     Return a copy of the current environment with the virtual environment activated.
+    Uses venv (built-in) and subprocess to get the correct environment variables.
     """
     env = os.environ.copy()
     env["VIRTUAL_ENV"] = venv_dir
-    env["PATH"] = os.path.join(venv_dir, "bin") + os.pathsep + env.get("PATH", "")
+    
+    # Unset PYTHONHOME to prevent conflicts with the virtual environment
+    env.pop("PYTHONHOME", None)
+
+    env.pop("SCRIPT_PATH", None)
+    
+    # Update PATH to prioritize virtual environment binaries
+    if os.name == 'nt':  # Windows
+        scripts_dir = os.path.join(venv_dir, "Scripts")
+        env["PATH"] = scripts_dir + os.pathsep + env.get("PATH", "")
+    else:  # Unix/Linux/macOS
+        bin_dir = os.path.join(venv_dir, "bin")
+        env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
+    
     return env
 
 
 def setup_repo_env(repo_dir):
     venv_dir = os.path.join(repo_dir, "venv")
+
     if not os.path.exists(venv_dir):
-        print(f"Creating virtual environment in {venv_dir}...")
+        logging.info(f"Creating virtual environment in {venv_dir}...")
         try:
             subprocess.run(["python3", "-m", "venv", venv_dir], check=True)
         except subprocess.CalledProcessError as e:
-            print(f"Error creating virtual environment {e}")
+            logging.error(f"Error creating virtual environment {e}")
             return False
     else:
-        print("Virtual environment already exists; skipping creation.")
+        logging.info("Virtual environment already exists; skipping creation.")
 
     venv_env = get_venv_env(venv_dir)
 
@@ -727,43 +817,42 @@ def setup_repo_env(repo_dir):
     requirements_path = os.path.join(repo_dir, "requirements.txt")
     dev_req = os.path.join(repo_dir, "requirements-dev.txt")
     dev_req2 = os.path.join(repo_dir, "requirements/requirements_dev.txt")
-    if os.path.exists(requirements_path):
-        print("Installing dependencies from requirements.txt...")
-        try:
-            subprocess.run(
-                ["pip3", "install", "-r", requirements_path], check=True, env=venv_env
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Error installing dependencies for  {e}")
-            return False
-    try:
-        subprocess.run(
-            ["pip3", "install", "-e", "."], check=True, env=venv_env, cwd=repo_dir
-        )
-    except:
-        pass
-    try:
-        subprocess.run(["pip3", "install", "-r", dev_req], check=True, env=venv_env)
-    except:
-        pass
-    try:
-        subprocess.run(["pip3", "install", "-r", dev_req2], check=True, env=venv_env)
-    except:
-        pass
 
-    try:
-        subprocess.run(
-            ["pip", "install", "pytest", "pytest-reportlog"], check=True, env=venv_env
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Error installing pytest for {e}")
+    def run(command: List[str], error_message = None):
+        try:
+            result = subprocess.run(command, check=True, env=venv_env, capture_output=True, text=True, cwd=repo_dir)
+            logging.info(result.stdout)
+            if result.stderr:
+                logging.warning(result.stderr)
+            return True
+        except subprocess.CalledProcessError as e:
+            if error_message:
+                logging.error(f"{error_message}: {e}")
+                if e.stdout:
+                    logging.error(f"stdout: {e.stdout}")
+                if e.stderr:
+                    logging.error(f"stderr: {e.stderr}")
+            return False
+
+    if os.path.exists(requirements_path):
+        logging.info("Installing dependencies from requirements.txt...")
+        run(["pip", "install", "-r", requirements_path], "Error installing dependencies from requirements.txt")
+
+    run(["pip", "install", "-e", "."], "Ignoring error installing package")
+    if os.path.exists(dev_req):
+        run(["pip", "install", "-r", dev_req], "Ignoring error installing dev dependencies")    
+    if os.path.exists(dev_req2):
+        run(["pip", "install", "-r", dev_req2], "Ignoring error installing dev dependencies")
+    pytest_success = run(["pip", "install", "pytest", "pytest-reportlog"], "Error installing pytest")
+    if not pytest_success:
         return False
+
     return venv_env
 
 
 def prepare_directory(repo):
     # Create a temporary worker directory
-    worker_dir = tempfile.mkdtemp(prefix="benchmark_")
+    worker_dir = tempfile.mkdtemp(prefix=f"benchmark_{repo.name}_")
 
     # Attempt to clean .pyc files from the worker directory
     command = 'find . -type f -name "*.pyc" -delete'
@@ -834,6 +923,7 @@ def prepare_directory(repo):
     return worker_dir
 
 
+
 async def run_tests(repo_dir: str, test_command: str = "pytest", log_id: str = ""):
     """
     Run tests and parse pytest output more comprehensively.
@@ -873,17 +963,22 @@ async def run_tests(repo_dir: str, test_command: str = "pytest", log_id: str = "
             "score": 0,
         }
 
+
+    # parse into string
+    stderr = stderr.decode("utf-8") if stderr else None
+    stdout = stdout.decode("utf-8") if stdout else None
+
     # read reportlog
     try:
         with open(reportlog, "r") as f:
             reportlog_content = f.read()
     except:
         reportlog_content = ""
-        print(f"Errored on {repo_dir}")
-        print(stdout, stderr)
+        print(f"Errored on {repo_dir} trying to open {reportlog}")
+        print(f"Ensure the repo has a venv with pytest and pytest-reportlog installed")
+        if stdout: print(stdout)
+        if stderr: print(stderr)
 
-    # parse stderr into string
-    stderr = stderr.decode("utf-8") if stderr else None
     return parse_pytest_json_report(reportlog_content, stderr=stderr)
 
 
@@ -894,6 +989,7 @@ async def test_without_function(
     Removes the target function from one worker_dir copy of the repo.
     Runs the test suite and returns the number of failed tests.
     """
+    logging.info(f"Testing without function {removal_location} in {code_path}")
     rel_path, func_name = removal_location
     abs_path = os.path.join(worker_dir, code_path, rel_path)
     content_after_deleted = open(abs_path, "r", encoding="utf-8").read()
@@ -1460,7 +1556,7 @@ def get_repo_info(code_path: str) -> Dict[str, float]:
 
     except Exception as exc:  # noqa: BLE001
         logging.exception("Error analysing repo at %s: %s", code_path, exc)
-        print(exc)
+        print("Error analysing repo at %s: %s", exc)
         info["error"] = str(exc)
 
     return info

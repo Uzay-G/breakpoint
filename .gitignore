@@ -9,7 +9,8 @@ graph-trav/wandb/
 temp_problems
 .venv
 venv/
-*.json 
+*.json
+*.jsonl
 *.png
 CLAUDE.md
 commands.txt
