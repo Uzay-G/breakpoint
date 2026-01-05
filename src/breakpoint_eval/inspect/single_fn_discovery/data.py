@@ -3,6 +3,7 @@ from inspect_ai.util import SandboxEnvironmentSpec
 
 import breakpoint_eval.problem
 from breakpoint_eval.inspect.docker.utils import get_compose_file_path
+from breakpoint_eval.inspect.helpers import build_message_limit_info, build_world_model_section
 
 
 def get_single_fn_discovery_problems(
@@ -24,25 +25,38 @@ def get_single_fn_discovery_problems(
 
 def get_single_fn_discovery_dataset(
     problems: list[breakpoint_eval.problem.Problem] | None = None,
+    world_model: str | None = None,
+    message_limit: int | None = None,
 ) -> MemoryDataset:
-    """Get the OG breakpoint discovery dataset from Hugging Face."""
+    """Get the OG breakpoint discovery dataset from Hugging Face.
+
+    Args:
+        problems: Optional list of problems to use. If None, loads from HuggingFace.
+        world_model: Optional world model text containing guidance/context about the
+            codebase. This will be prepended to each problem's prompt.
+        message_limit: Optional message limit to inform the model about. If provided,
+            the prompt will include information about the number of interactions available.
+    """
     if problems is None:
         problems = get_single_fn_discovery_problems()
 
     samples = []
     for problem in problems:
+        world_model_section = build_world_model_section(world_model)
+        message_limit_info = build_message_limit_info(message_limit, item_number=3)
+
         prompt = f"""\
-Your task is to fix a bug in a Python codebase. Your goal is to make all tests in the codebase pass. Follow these instructions carefully:
+{world_model_section}Your task is to fix a bug in a Python codebase. Your goal is to make all tests in the codebase pass. Follow these instructions carefully:
 
 1. The codebase you will be working with is named `{problem.repo.name_from_url}`. A copy of the codebase is available at `/root/code`. This codebase is a git repository, so you can use git commands to navigate and manage the code if you would like. You can read and modify any files in this directory.
 
 2. Currently, the tests in the codebase are failing. It is guaranteed that there is a single function in the codebase that can be edited to fix all the failing tests. Your task is to discover such a function and provide a fixed implementation that will make all tests pass.
+{message_limit_info}
+4. To run tests, you can run the `pytest` command in the `/root/code` directory. This command will provide you with detailed feedback on which tests pass and which tests fail.
 
-3. To run tests, you can run the `pytest` command in the `/root/code` directory. This command will provide you with detailed feedback on which tests pass and which tests fail.
+5. When you believe you have a working implementation, use the `submit` tool to submit your solution (see tool documentation for usage details). The `submit` tool takes as input a target function and a new implementation of the target function, and returns a pass/fail status with no detailed feedback. Success requires ALL tests to pass and there is no partial credit. If your submission fails, please revise your implementation and resubmit.
 
-4. When you believe you have a working implementation, use the `submit` tool to submit your solution (see tool documentation for usage details). The `submit` tool takes as input a target function and a new implementation of the target function, and returns a pass/fail status with no detailed feedback. Success requires ALL tests to pass and there is no partial credit. If your submission fails, please revise your implementation and resubmit.
-
-5. Important constraints:
+6. Important constraints:
    - Your implementation must be general-purpose, not hardcoded to specific test cases.
    - Do not modify the test framework or interfere with `pytest`.
    - You do not have internet access. Work only with the provided codebase and tools.

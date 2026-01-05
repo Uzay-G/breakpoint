@@ -9,13 +9,45 @@ from inspect_ai.tool import bash, text_editor, tool
 from inspect_ai.util import sandbox, store
 
 import breakpoint_eval.problem
+from breakpoint_eval.inspect.helpers import load_world_model
 from breakpoint_eval.inspect.single_fn_discovery import data
 
 
 @task
-def single_fn_discovery() -> Task:
+def single_fn_discovery(
+    world_model: str | None = None,
+    repo: str | None = None,
+    message_limit: int | None = None,
+) -> Task:
+    """
+    Single function discovery task.
+
+    Args:
+        world_model: Optional path to a text file containing guidance/context about the
+            codebase. This "world model" will be prepended to the agent's prompt to help
+            it understand patterns, conventions, and structure of the codebase.
+        repo: Optional repo name to filter problems by (e.g., "beartype", "tinydb").
+            Only problems from this repo will be included.
+        message_limit: Optional message limit to inform the model about. If provided,
+            the prompt will include information about the number of interactions available.
+            Note: This is informational only - the actual limit is enforced by inspect's
+            --message-limit CLI flag.
+    """
+    world_model_text = load_world_model(world_model)
+
+    # Load and optionally filter problems by repo
+    problems = data.get_single_fn_discovery_problems()
+    if repo is not None:
+        problems = [p for p in problems if p.repo.name_from_url == repo]
+        if not problems:
+            raise ValueError(f"No problems found for repo: {repo}")
+
     return Task(
-        dataset=data.get_single_fn_discovery_dataset(),
+        dataset=data.get_single_fn_discovery_dataset(
+            problems=problems,
+            world_model=world_model_text,
+            message_limit=message_limit,
+        ),
         scorer=single_fn_discovery_pytest_scorer(),
         solver=[
             single_fn_discovery_setup(),
